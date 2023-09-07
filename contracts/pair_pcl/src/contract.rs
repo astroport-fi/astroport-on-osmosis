@@ -103,7 +103,7 @@ pub fn instantiate(
     // We pin factory address into wasm binary to prevent using Astroport PCL pools on Osmosis without
     // paying fees to Astroport protocol.
     // Users are discouraged from instantiating PCL pools using usual Osmosis tools as such pool won't be included
-    // in Astroport routing.
+    // in Astroport routing as well as swap and withdraw endpoints will be broken forever.
     let factory_addr = Addr::unchecked(FACTORY_ADDRESS);
     Precisions::store_precisions(deps.branch(), &msg.asset_infos, &factory_addr)?;
 
@@ -194,7 +194,7 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::SetPoolId { pool_id } => set_pool_id(deps, pool_id),
+        ExecuteMsg::SetPoolId { pool_id } => set_pool_id(deps, info, pool_id),
         ExecuteMsg::ProvideLiquidity {
             assets,
             slippage_tolerance,
@@ -251,7 +251,11 @@ pub fn execute(
     }
 }
 
-fn set_pool_id(deps: DepsMut, pool_id: u64) -> Result<Response, ContractError> {
+fn set_pool_id(deps: DepsMut, info: MessageInfo, pool_id: u64) -> Result<Response, ContractError> {
+    if info.sender.as_str() != FACTORY_ADDRESS {
+        return Err(ContractError::Unauthorized {});
+    }
+
     POOL_ID.may_load(deps.storage)?.map_or_else(
         || {
             POOL_ID.save(deps.storage, &pool_id)?;
@@ -649,7 +653,7 @@ pub(crate) fn internal_swap(
 
     let mut xs = pools.iter().map(|asset| asset.amount).collect_vec();
 
-    // Get fee info from the factory_wrapper
+    // Get fee info from the factory
     let fee_info = query_fee_info(
         &deps.querier,
         &config.factory_addr,

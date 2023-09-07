@@ -1,7 +1,13 @@
 use astroport::asset::{native_asset_info, AssetInfoExt};
+use astroport::pair;
 use astroport::pair_concentrated::ConcentratedPoolParams;
-use cosmwasm_std::{coin, Coin, Decimal};
+use cosmwasm_std::{coin, to_binary, Coin, Decimal};
+use osmosis_std::types::osmosis::cosmwasmpool::v1beta1::{
+    ContractInfoByPoolIdRequest, ContractInfoByPoolIdResponse, MsgCreateCosmWasmPool,
+    MsgCreateCosmWasmPoolResponse,
+};
 use osmosis_test_tube::{Account, OsmosisTestApp};
+use test_tube::Runner;
 
 use astroport_osmo_e2e_tests::helper::{f64_to_dec, TestAppWrapper};
 
@@ -149,4 +155,59 @@ fn dex_swap_test() {
     // let bar_bal = helper.coin_balance(&user.address().to_string(), &bar_denom);
     // assert_eq!(foo_bal, 0);
     // assert_eq!(bar_bal, 1984437);
+}
+
+#[test]
+fn init_outside_of_factory() {
+    let app = OsmosisTestApp::new();
+    let helper = TestAppWrapper::bootstrap(&app).unwrap();
+
+    let foo_denom = helper.register_and_mint("foo", 1_000_000_000000, 6, None);
+    let bar_denom = helper.register_and_mint("bar", 1_000_000_000000, 6, None);
+    let foo = native_asset_info(foo_denom.clone());
+    let bar = native_asset_info(bar_denom.clone());
+
+    let pool_id = app
+        .execute::<_, MsgCreateCosmWasmPoolResponse>(
+            MsgCreateCosmWasmPool {
+                code_id: helper.code_ids["pair-concentrated"],
+                instantiate_msg: to_binary(&pair::InstantiateMsg {
+                    asset_infos: vec![foo.clone(), bar.clone()],
+                    init_params: Some(to_binary(&default_pcl_params()).unwrap()),
+                    factory_addr: "".to_string(),
+                    token_code_id: 0,
+                })
+                .unwrap()
+                .to_vec(),
+                sender: helper.signer.address().to_string(),
+            },
+            MsgCreateCosmWasmPool::TYPE_URL,
+            &helper.signer,
+        )
+        .unwrap()
+        .data
+        .pool_id;
+    let resp = app
+        .query::<_, ContractInfoByPoolIdResponse>(
+            "/osmosis.cosmwasmpool.v1beta1.Query/ContractInfoByPoolId",
+            &ContractInfoByPoolIdRequest { pool_id },
+        )
+        .unwrap();
+    let pair_addr = resp.contract_address.as_str();
+
+    let err = helper
+        .provide(
+            &helper.signer,
+            &pair_addr,
+            &[
+                foo.with_balance(50_000_000000u128),
+                bar.with_balance(100_000_000000u128),
+            ],
+            None,
+        )
+        .unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "execute error: failed to execute message; message index: 0: Pair is not registered in the factory. Only swap and withdraw are allowed: execute wasm contract failed"
+    );
 }
