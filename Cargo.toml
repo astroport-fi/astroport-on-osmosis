@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = [
+    "contracts/*",
+    "e2e_tests",
+    "packages/*"
+]
+
+[profile.release]
+opt-level = "z"
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+panic = 'abort'
+incremental = false
+overflow-checks = true
+strip = true
+
+[workspace.dependencies]
+astroport = { git = "https://github.com/astroport-fi/hidden_astroport_core", branch = "feat/separate_pcl_crate", version = "3" }
+astroport-pcl-common = { git = "https://github.com/astroport-fi/hidden_astroport_core", branch = "feat/separate_pcl_crate", version = "1" }
+astroport-circular-buffer = { git = "https://github.com/astroport-fi/hidden_astroport_core", branch = "feat/separate_pcl_crate", version = "0.1" }

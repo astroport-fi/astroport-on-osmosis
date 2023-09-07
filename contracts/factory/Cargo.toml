@@ -1,0 +1,25 @@
+[package]
+name = "astroport-factory-osmosis"
+version = "1.0.0"
+authors = ["Astroport"]
+edition = "2021"
+description = "Astroport factory contract for Osmosis"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+library = []
+
+[dependencies]
+cosmwasm-std = { version = "1", features = ["cosmwasm_1_1"] }
+cosmwasm-schema = "1"
+cw-storage-plus = "0.15"
+osmosis-std = "0.17.0-rc0"
+cw-utils = "1"
+cw2 = "1"
+astroport = { workspace = true }
+astroport-on-osmosis = { path = "../../packages/astroport_on_osmosis", version = "1" }
+thiserror = "1.0"
+itertools = "0.11"
