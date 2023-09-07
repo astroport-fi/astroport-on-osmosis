@@ -1,0 +1,9 @@
+[package]
+name = "astroport-on-osmosis"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+cosmwasm-schema = "1"
+cosmwasm-std = "1"
+astroport = { workspace = true }

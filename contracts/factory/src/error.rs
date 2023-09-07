@@ -1,4 +1,5 @@
 use cosmwasm_std::StdError;
+use cw_utils::PaymentError;
 use thiserror::Error;
 
 /// This enum describes factory contract errors
@@ -6,6 +7,9 @@ use thiserror::Error;
 pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
+
+    #[error("{0}")]
+    PaymentError(#[from] PaymentError),
 
     #[error("Unauthorized")]
     Unauthorized {},
@@ -36,4 +40,7 @@ pub enum ContractError {
 
     #[error("Failed to parse or process reply message")]
     FailedToParseReply {},
+
+    #[error("Contract doesn't support non-native tokens")]
+    NonNativeToken {},
 }

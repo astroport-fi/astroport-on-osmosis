@@ -1,12 +1,13 @@
+use astroport::asset::AssetInfo;
+use astroport::common::OwnershipProposal;
+use astroport::factory::{Config, PairConfig};
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Api, Deps, Order, StdResult};
+use cosmwasm_std::{Addr, Deps, Order, QuerierWrapper, StdResult};
 use cw_storage_plus::{Bound, Item, Map};
 use itertools::Itertools;
 
 use crate::error::ContractError;
-use astroport::asset::AssetInfo;
-use astroport::common::OwnershipProposal;
-use astroport::factory::{Config, PairConfig};
+
 /// This is an intermediate structure for storing a pair's key. It is used in a submessage response.
 #[cw_serde]
 pub struct TmpPairInfo {
@@ -95,8 +96,10 @@ fn calc_range_start(start_after: Option<Vec<AssetInfo>>) -> Option<Vec<u8>> {
     })
 }
 
+/// CW20 tokens are prohibited on Osmosis. This function checks that all asset infos are native tokens.
+/// It also sends stargate query to ensure denom exists.
 pub(crate) fn check_asset_infos(
-    api: &dyn Api,
+    querier: QuerierWrapper,
     asset_infos: &[AssetInfo],
 ) -> Result<(), ContractError> {
     if !asset_infos.iter().all_unique() {
@@ -105,8 +108,10 @@ pub(crate) fn check_asset_infos(
 
     asset_infos
         .iter()
-        .try_for_each(|asset_info| asset_info.check(api))
-        .map_err(Into::into)
+        .try_for_each(|asset_info| match asset_info {
+            AssetInfo::NativeToken { denom } => Ok(querier.query_supply(denom).map(|_| ())?),
+            AssetInfo::Token { .. } => Err(ContractError::NonNativeToken {}),
+        })
 }
 
 /// Stores the latest contract ownership transfer proposal

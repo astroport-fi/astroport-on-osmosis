@@ -1,28 +1,30 @@
 use std::collections::HashSet;
 
+use astroport::asset::{addr_opt_validate, pair_info_by_pool, AssetInfo, PairInfo};
+use astroport::common::{claim_ownership, drop_ownership_proposal, propose_new_owner};
+use astroport::factory::{
+    Config, ConfigResponse, ExecuteMsg, FeeInfoResponse, InstantiateMsg, PairConfig, PairType,
+    PairsResponse, QueryMsg,
+};
+use astroport::generator::ExecuteMsg::DeactivatePool;
+use astroport::pair;
+use astroport::pair::InstantiateMsg as PairInstantiateMsg;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, from_binary, to_binary, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Order, Reply,
-    ReplyOn, Response, StdError, StdResult, SubMsg, SubMsgResponse, SubMsgResult, WasmMsg,
+    attr, ensure, to_binary, wasm_execute, Binary, CosmosMsg, Deps, DepsMut, Empty, Env,
+    MessageInfo, Order, QuerierWrapper, Reply, Response, StdError, StdResult, SubMsg, WasmMsg,
 };
-use cw2::{get_contract_version, set_contract_version};
-use cw_utils::parse_instantiate_response_data;
-
-use astroport::asset::{addr_opt_validate, AssetInfo, PairInfo};
-use astroport::common::{claim_ownership, drop_ownership_proposal, propose_new_owner};
-use astroport::factory::{
-    Config, ConfigResponse, ExecuteMsg, FeeInfoResponse, InstantiateMsg, MigrateMsg, PairConfig,
-    PairType, PairsResponse, QueryMsg,
-};
-use astroport::generator::ExecuteMsg::DeactivatePool;
-use astroport::pair::InstantiateMsg as PairInstantiateMsg;
+use cw2::set_contract_version;
+use cw_utils::must_pay;
 use itertools::Itertools;
+use osmosis_std::types::osmosis::cosmwasmpool::v1beta1::{
+    CosmwasmpoolQuerier, MsgCreateCosmWasmPool, MsgCreateCosmWasmPoolResponse,
+};
+
+use astroport_on_osmosis::pair_pcl::ExecuteMsg as PclOsmoExecuteMsg;
 
 use crate::error::ContractError;
-use crate::migration;
-use crate::migration::{migrate_configs, migrate_pair_configs};
-use crate::querier::query_pair_info;
 use crate::state::{
     check_asset_infos, pair_key, read_pairs, TmpPairInfo, CONFIG, OWNERSHIP_PROPOSAL, PAIRS,
     PAIR_CONFIGS, TMP_PAIR_INFO,
@@ -34,6 +36,10 @@ const CONTRACT_NAME: &str = "astroport-factory";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// A `reply` call code ID used in a sub-message.
 const INSTANTIATE_PAIR_REPLY_ID: u64 = 1;
+const SET_POOL_ID_FAILED_REPLY_ID: u64 = 2;
+/// 100 OSMO flat fee to create pool
+const CREATE_FEE_DENOM: &str = "uosmo";
+const CREATE_FEE: u128 = 100_000000;
 
 /// Creates a new contract with the specified parameters packed in the `msg` variable.
 ///
@@ -52,7 +58,7 @@ pub fn instantiate(
         token_code_id: msg.token_code_id,
         fee_address: None,
         generator_address: None,
-        whitelist_code_id: msg.whitelist_code_id,
+        whitelist_code_id: 0,
         coin_registry_address: deps.api.addr_validate(&msg.coin_registry_address)?,
     };
 
@@ -70,29 +76,18 @@ pub fn instantiate(
         return Err(ContractError::PairConfigDuplicate {});
     }
 
+    let mut attrs = vec![attr("instantiate", format!("{CONTRACT_NAME}"))];
     for pc in msg.pair_configs.iter() {
         // Validate total and maker fee bps
         if !pc.valid_fee_bps() {
             return Err(ContractError::PairConfigInvalidFeeBps {});
         }
         PAIR_CONFIGS.save(deps.storage, pc.pair_type.to_string(), pc)?;
+        attrs.push(attr("pair_type", pc.pair_type.to_string()));
     }
     CONFIG.save(deps.storage, &config)?;
 
-    Ok(Response::new())
-}
-
-/// Data structure used to update general contract parameters.
-pub struct UpdateConfig {
-    /// This is the CW20 token contract code identifier
-    token_code_id: Option<u64>,
-    /// Contract address to send governance fees to (the Maker)
-    fee_address: Option<String>,
-    /// Generator contract address
-    generator_address: Option<String>,
-    /// CW1 whitelist contract code id used to store 3rd party staking rewards
-    whitelist_code_id: Option<u64>,
-    coin_registry_address: Option<String>,
+    Ok(Response::new().add_attributes(attrs))
 }
 
 /// Exposes all the execute functions available in the contract.
@@ -131,28 +126,23 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::UpdateConfig {
-            token_code_id,
             fee_address,
             generator_address,
-            whitelist_code_id,
             coin_registry_address,
+            ..
         } => execute_update_config(
             deps,
             info,
-            UpdateConfig {
-                token_code_id,
-                fee_address,
-                generator_address,
-                whitelist_code_id,
-                coin_registry_address,
-            },
+            fee_address,
+            generator_address,
+            coin_registry_address,
         ),
         ExecuteMsg::UpdatePairConfig { config } => execute_update_pair_config(deps, info, config),
         ExecuteMsg::CreatePair {
             pair_type,
             asset_infos,
             init_params,
-        } => execute_create_pair(deps, env, pair_type, asset_infos, init_params),
+        } => execute_create_pair(deps, env, info, pair_type, asset_infos, init_params),
         ExecuteMsg::Deregister { asset_infos } => deregister(deps, info, asset_infos),
         ExecuteMsg::ProposeNewOwner { owner, expires_in } => {
             let config = CONFIG.load(deps.storage)?;
@@ -197,7 +187,9 @@ pub fn execute(
 pub fn execute_update_config(
     deps: DepsMut,
     info: MessageInfo,
-    param: UpdateConfig,
+    fee_address: Option<String>,
+    generator_address: Option<String>,
+    coin_registry_address: Option<String>,
 ) -> Result<Response, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
 
@@ -206,25 +198,17 @@ pub fn execute_update_config(
         return Err(ContractError::Unauthorized {});
     }
 
-    if let Some(fee_address) = param.fee_address {
+    if let Some(fee_address) = fee_address {
         // Validate address format
         config.fee_address = Some(deps.api.addr_validate(&fee_address)?);
     }
 
-    if let Some(generator_address) = param.generator_address {
+    if let Some(generator_address) = generator_address {
         // Validate the address format
         config.generator_address = Some(deps.api.addr_validate(&generator_address)?);
     }
 
-    if let Some(token_code_id) = param.token_code_id {
-        config.token_code_id = token_code_id;
-    }
-
-    if let Some(code_id) = param.whitelist_code_id {
-        config.whitelist_code_id = code_id;
-    }
-
-    if let Some(coin_registry_address) = param.coin_registry_address {
+    if let Some(coin_registry_address) = coin_registry_address {
         config.coin_registry_address = deps.api.addr_validate(&coin_registry_address)?;
     }
 
@@ -275,13 +259,19 @@ pub fn execute_update_pair_config(
 pub fn execute_create_pair(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     pair_type: PairType,
     asset_infos: Vec<AssetInfo>,
     init_params: Option<Binary>,
 ) -> Result<Response, ContractError> {
-    check_asset_infos(deps.api, &asset_infos)?;
-
-    let config = CONFIG.load(deps.storage)?;
+    // Osmosis has 100 OSMO flat fee to create a pool.
+    // We don't need to pass fees because Osmosis handles it internally and charges factory's balance
+    let amount = must_pay(&info, CREATE_FEE_DENOM)?;
+    ensure!(
+        amount.u128() > CREATE_FEE,
+        StdError::generic_err("Not enough funds sent. Pool initialization costs 100 OSMO")
+    );
+    check_asset_infos(deps.querier, &asset_infos)?;
 
     if PAIRS.has(deps.storage, &pair_key(&asset_infos)) {
         return Err(ContractError::PairWasCreated {});
@@ -300,27 +290,21 @@ pub fn execute_create_pair(
     let pair_key = pair_key(&asset_infos);
     TMP_PAIR_INFO.save(deps.storage, &TmpPairInfo { pair_key })?;
 
-    let sub_msg: Vec<SubMsg> = vec![SubMsg {
-        id: INSTANTIATE_PAIR_REPLY_ID,
-        msg: WasmMsg::Instantiate {
-            admin: Some(config.owner.to_string()),
-            code_id: pair_config.code_id,
-            msg: to_binary(&PairInstantiateMsg {
-                asset_infos: asset_infos.clone(),
-                token_code_id: config.token_code_id,
-                factory_addr: env.contract.address.to_string(),
-                init_params,
-            })?,
-            funds: vec![],
-            label: "Astroport pair".to_string(),
-        }
-        .into(),
-        gas_limit: None,
-        reply_on: ReplyOn::Success,
-    }];
+    let cw_pool_msg = MsgCreateCosmWasmPool {
+        code_id: pair_config.code_id,
+        instantiate_msg: to_binary(&PairInstantiateMsg {
+            asset_infos: asset_infos.clone(),
+            token_code_id: 0,
+            factory_addr: env.contract.address.to_string(),
+            init_params,
+        })?
+        .to_vec(),
+        sender: env.contract.address.to_string(),
+    };
+    let init_submsg = SubMsg::reply_on_success(cw_pool_msg, INSTANTIATE_PAIR_REPLY_ID);
 
     Ok(Response::new()
-        .add_submessages(sub_msg)
+        .add_submessage(init_submsg)
         .add_attributes(vec![
             attr("action", "create_pair"),
             attr("pair", asset_infos.iter().join("-")),
@@ -330,30 +314,46 @@ pub fn execute_create_pair(
 /// The entry point to the contract for processing replies from submessages.
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
-    match msg {
-        Reply {
-            id: INSTANTIATE_PAIR_REPLY_ID,
-            result:
-                SubMsgResult::Ok(SubMsgResponse {
-                    data: Some(data), ..
-                }),
-        } => {
+    match msg.id {
+        INSTANTIATE_PAIR_REPLY_ID => {
             let tmp = TMP_PAIR_INFO.load(deps.storage)?;
             if PAIRS.has(deps.storage, &tmp.pair_key) {
                 return Err(ContractError::PairWasRegistered {});
             }
 
-            let init_response = parse_instantiate_response_data(data.as_slice())
-                .map_err(|e| StdError::generic_err(format!("{e}")))?;
-
-            let pair_contract = deps.api.addr_validate(&init_response.contract_address)?;
-
+            let resp: MsgCreateCosmWasmPoolResponse = msg.result.try_into()?;
+            let cw_querier = CosmwasmpoolQuerier::new(&deps.querier);
+            // TODO: !!! this requires Osmosis to whitelist /osmosis.cosmwasmpool.v1beta1.Query/ContractInfoByPoolId stargate query
+            let contract_info = cw_querier.contract_info_by_pool_id(resp.pool_id)?;
+            let pair_contract = deps.api.addr_validate(&contract_info.contract_address)?;
             PAIRS.save(deps.storage, &tmp.pair_key, &pair_contract)?;
 
-            Ok(Response::new().add_attributes(vec![
-                attr("action", "register"),
-                attr("pair_contract_addr", pair_contract),
-            ]))
+            // In case we deploy a pool which doesn't support this callback we pass it through in reply
+            let set_pool_id_submsg = SubMsg::reply_on_error(
+                wasm_execute(
+                    &pair_contract,
+                    &PclOsmoExecuteMsg::SetPoolId {
+                        pool_id: resp.pool_id,
+                    },
+                    vec![],
+                )?,
+                SET_POOL_ID_FAILED_REPLY_ID,
+            );
+
+            Ok(Response::new()
+                .add_submessage(set_pool_id_submsg)
+                .add_attributes(vec![
+                    attr("action", "register"),
+                    attr("pair_contract_addr", pair_contract),
+                ]))
+        }
+        SET_POOL_ID_FAILED_REPLY_ID => {
+            let attrs = [
+                attr("action", "set_pool_id_reply"),
+                attr("state", "failed"),
+                attr("solution", "pass"),
+            ];
+            Ok(Response::new().add_attributes(attrs))
         }
         _ => Err(ContractError::FailedToParseReply {}),
     }
@@ -370,7 +370,7 @@ pub fn deregister(
     info: MessageInfo,
     asset_infos: Vec<AssetInfo>,
 ) -> Result<Response, ContractError> {
-    check_asset_infos(deps.api, &asset_infos)?;
+    check_asset_infos(deps.querier, &asset_infos)?;
 
     let config = CONFIG.load(deps.storage)?;
 
@@ -381,9 +381,9 @@ pub fn deregister(
     let pair_addr = PAIRS.load(deps.storage, &pair_key(&asset_infos))?;
     PAIRS.remove(deps.storage, &pair_key(&asset_infos));
 
-    let mut messages: Vec<CosmosMsg> = vec![];
+    let mut messages = vec![];
     if let Some(generator) = config.generator_address {
-        let pair_info = query_pair_info(&deps.querier, &pair_addr)?;
+        let pair_info = pair_info_by_pool(&deps.querier, &pair_addr)?;
 
         // sets the allocation point to zero for the lp_token
         messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
@@ -501,31 +501,18 @@ pub fn query_fee_info(deps: Deps, pair_type: PairType) -> StdResult<FeeInfoRespo
     })
 }
 
+/// Returns information about a pair (using the [`PairInfo`] struct).
+///
+/// `pair_contract` is the pair for which to retrieve information.
+pub fn query_pair_info(
+    querier: &QuerierWrapper,
+    pair_contract: impl Into<String>,
+) -> StdResult<PairInfo> {
+    querier.query_wasm_smart(pair_contract, &pair::QueryMsg::Pair {})
+}
+
 /// Manages the contract migration.
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(mut deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
-    let contract_version = get_contract_version(deps.storage)?;
-
-    match contract_version.contract.as_ref() {
-        "astroport-factory" => match contract_version.version.as_ref() {
-            "1.2.0" | "1.2.1" => {
-                let msg: migration::MigrationMsg = from_binary(&msg.params)?;
-                migrate_configs(&mut deps, &msg)?;
-            }
-            "1.3.0" | "1.5.1" => {}
-            "1.3.1" | "1.5.0" => {
-                migrate_pair_configs(deps.storage)?;
-            }
-            _ => return Err(ContractError::MigrationError {}),
-        },
-        _ => return Err(ContractError::MigrationError {}),
-    }
-
-    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-
-    Ok(Response::new()
-        .add_attribute("previous_contract_name", &contract_version.contract)
-        .add_attribute("previous_contract_version", &contract_version.version)
-        .add_attribute("new_contract_name", CONTRACT_NAME)
-        .add_attribute("new_contract_version", CONTRACT_VERSION))
+pub fn migrate(_deps: DepsMut, _env: Env, _msg: Empty) -> StdResult<Response> {
+    Err(StdError::generic_err("Migration is not implemented yet"))
 }
