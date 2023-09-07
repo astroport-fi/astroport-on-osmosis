@@ -20,7 +20,7 @@ use astroport_pcl_common::state::{
 };
 use astroport_pcl_common::utils::{
     assert_max_spread, assert_slippage_tolerance, before_swap_check, calc_provide_fee,
-    check_asset_infos, check_assets, check_pair_registered, compute_swap, get_share_in_assets,
+    check_assets, check_pair_registered, compute_swap, get_share_in_assets,
 };
 use astroport_pcl_common::{calc_d, get_xcp};
 #[cfg(not(feature = "library"))]
@@ -66,8 +66,27 @@ pub fn instantiate(
         msg.asset_infos.len() == 2,
         StdError::generic_err("asset_infos must contain two elements")
     );
+    let denoms: Vec<_> = msg
+        .asset_infos
+        .iter()
+        .filter_map(|asset_info| match asset_info {
+            AssetInfo::Token { .. } => None,
+            AssetInfo::NativeToken { denom } => Some(denom),
+        })
+        .collect();
+    ensure!(
+        denoms.len() == 2,
+        StdError::generic_err("CW20 tokens are not supported")
+    );
 
-    check_asset_infos(deps.api, &msg.asset_infos)?;
+    // Check that all denoms exist on chain.
+    // This query requires a chain to run cosmwasm VM >= 1.1
+    denoms.iter().try_for_each(|&denom| {
+        deps.querier
+            .query_supply(denom)
+            .map(|_| ())
+            .map_err(|_| StdError::generic_err(format!("Denom {denom} doesn't exist on chain")))
+    })?;
 
     let params: ConcentratedPoolParams = from_binary(
         &msg.init_params
@@ -332,7 +351,7 @@ pub fn provide_liquidity(
                 // To calculate the total amount of deposits properly, we should subtract the user deposit from the pool
                 pool.amount = pool.amount.checked_sub(deposits[i])?;
             }
-            AssetInfo::Token { .. } => todo!("not supported"),
+            AssetInfo::Token { .. } => unreachable!("Token assets are not supported"),
         }
     }
 
