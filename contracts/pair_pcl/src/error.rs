@@ -45,7 +45,7 @@ pub enum ContractError {
     #[error("Failed to parse or process reply message")]
     FailedToParseReply {},
 
-    #[error("Pair is not registered in the factory_wrapper. Only swap and withdraw are allowed")]
+    #[error("Pair is not registered in the factory. Only swap and withdraw are allowed")]
     PairIsNotRegistered {},
 
     #[error("Invalid number of assets. This pair supports only {0} assets")]
