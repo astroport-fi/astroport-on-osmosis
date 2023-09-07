@@ -596,9 +596,9 @@ fn execute_swap(
     let dispatch_swap_msg = MsgSwapExactAmountIn {
         sender: info.sender.to_string(),
         routes: vec![SwapAmountInRoute {
-            pool_id: 1, // TODO: save pool_id in state
+            pool_id: POOL_ID.load(deps.storage)?,
             token_out_denom: offer_asset.info.to_string(),
-            // token_out_denom: "uosmo".to_string(), // TODO: Osmosis requires to pass existing denom. However, not clear whether they assert this denom belongs to the pair or not
+            // token_out_denom: "uosmo".to_string(), // TODO: Osmosis requires to pass any existing denom. However, not clear whether they assert this denom belongs to the pair or not
         }],
         token_in: Some(offer_asset.as_coin()?.into()),
         // We don't care about this field as all necessary parameters are passed through SWAP_PARAMS state
