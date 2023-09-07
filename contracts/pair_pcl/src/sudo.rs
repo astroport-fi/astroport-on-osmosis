@@ -44,7 +44,7 @@ pub fn sudo(deps: DepsMut, env: Env, msg: SudoMessage) -> Result<Response, Contr
             })
         }
         SudoMessage::SwapExactAmountOut { .. } => {
-            todo!("Unsafe function! Osmosis doesn't send expected coins from sender balance!")
+            todo!("Unsafe function! Osmosis doesn't pull out expected coins from sender balance!")
             /*let sender = deps.api.addr_validate(&sender)?;
             let ask_asset = native_asset_info(token_out.denom).with_balance(token_out.amount);
 
