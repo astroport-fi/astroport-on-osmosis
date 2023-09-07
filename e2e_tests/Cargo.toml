@@ -9,8 +9,10 @@ cosmwasm-std = "1"
 serde = "1"
 osmosis-std = "0.17.0-rc0"
 #osmosis-test-tube = "17.0.0-rc0"
-osmosis-test-tube = { path = "../../test-tube/packages/osmosis-test-tube" }
-test-tube = { path = "../../test-tube/packages/test-tube" }
+#osmosis-test-tube = { path = "../../test-tube/packages/osmosis-test-tube" }
+#test-tube = { path = "../../test-tube/packages/test-tube" }
+osmosis-test-tube = { git = "https://github.com/epanchee/osmosis-test-tube", branch = "feat/whitelist_cwpool_query" }
+test-tube = { git = "https://github.com/epanchee/osmosis-test-tube", branch = "feat/whitelist_cwpool_query"}
 astroport = { workspace = true }
 astroport-on-osmosis = { path = "../packages/astroport_on_osmosis", version = "1" }
 serde_json = "1"
