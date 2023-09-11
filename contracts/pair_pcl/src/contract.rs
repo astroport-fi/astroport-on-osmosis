@@ -589,6 +589,11 @@ fn execute_swap(
 ) -> Result<Response, ContractError> {
     offer_asset.assert_sent_native_token_balance(&info)?;
 
+    let config = CONFIG.load(deps.storage)?;
+    if !config.pair_info.asset_infos.contains(&offer_asset.info) {
+        return Err(ContractError::InvalidAsset(offer_asset.info.to_string()));
+    }
+
     SWAP_PARAMS.save(
         deps.storage,
         &SwapParams {
