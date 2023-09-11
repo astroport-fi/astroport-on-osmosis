@@ -23,3 +23,9 @@ astroport = { workspace = true }
 astroport-on-osmosis = { path = "../../packages/astroport_on_osmosis", version = "1" }
 thiserror = "1.0"
 itertools = "0.11"
+
+[dev-dependencies]
+astroport-pcl-osmo = { path = "../pair_pcl" }
+cw-multi-test = "0.15"
+prost = "0.11"
+anyhow = "1"
