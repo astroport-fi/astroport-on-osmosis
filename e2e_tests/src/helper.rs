@@ -32,7 +32,7 @@ use astroport_on_osmosis::pair_pcl::ExecuteMsg;
 
 fn locate_workspace_root() -> String {
     let result = Command::new("cargo")
-        .args(&["locate-project", "--workspace", "--message-format=plain"])
+        .args(["locate-project", "--workspace", "--message-format=plain"])
         .output()
         .expect("failed to locate workspace root");
 
@@ -63,7 +63,7 @@ const BUILD_CONTRACTS: [&str; 2] = [
 fn compile_wasm(project_dir: &str, contract: &str) {
     eprintln!("Building contract {contract}...");
     let output = Command::new("cargo")
-        .args(&[
+        .args([
             "build",
             "--target",
             "wasm32-unknown-unknown",
@@ -73,9 +73,9 @@ fn compile_wasm(project_dir: &str, contract: &str) {
             "--package",
             contract,
         ])
-        .current_dir(&project_dir)
+        .current_dir(project_dir)
         .output()
-        .expect(&format!("failed to build contract {}", contract));
+        .unwrap_or_else(|_| panic!("failed to build contract {contract}"));
     assert!(
         output.status.success(),
         "failed to build contracts: {}",
@@ -121,20 +121,20 @@ impl<'a> TestAppWrapper<'a> {
         };
 
         println!("Storing coin registry contract...");
-        let native_registry_code_id = helper.store_code(&native_registry_wasm).unwrap();
+        let native_registry_code_id = helper.store_code(native_registry_wasm).unwrap();
         helper
             .code_ids
             .insert("coin-registry", native_registry_code_id);
 
         println!("Storing factory contract...");
-        let factory_code_id = helper.store_code(&factory_wasm).unwrap();
+        let factory_code_id = helper.store_code(factory_wasm).unwrap();
         helper.code_ids.insert("factory", factory_code_id);
 
         let coin_registry_address = helper
             .init_contract(
                 "coin-registry",
                 &astroport::native_coin_registry::InstantiateMsg {
-                    owner: helper.signer.address().to_string(),
+                    owner: helper.signer.address(),
                 },
                 &[],
             )
@@ -155,7 +155,7 @@ impl<'a> TestAppWrapper<'a> {
             }],
             fee_address: Some(FAKE_MAKER.to_string()),
             generator_address: None,
-            owner: helper.signer.address().to_string(),
+            owner: helper.signer.address(),
             coin_registry_address,
             token_code_id: 0,
             whitelist_code_id: 0,
@@ -214,7 +214,7 @@ impl<'a> TestAppWrapper<'a> {
         self.tf
             .create_denom(
                 MsgCreateDenom {
-                    sender: self.signer.address().to_string(),
+                    sender: self.signer.address(),
                     subdenom: subdenom.to_string(),
                 },
                 &self.signer,
@@ -225,12 +225,12 @@ impl<'a> TestAppWrapper<'a> {
     }
 
     pub fn mint(&self, coin: Coin, to: Option<String>) {
-        let receiver = to.unwrap_or(self.signer.address().to_string());
+        let receiver = to.unwrap_or(self.signer.address());
 
         self.tf
             .mint(
                 MsgMint {
-                    sender: self.signer.address().to_string(),
+                    sender: self.signer.address(),
                     amount: Some(coin.into()),
                     mint_to_address: receiver,
                 },
@@ -251,7 +251,7 @@ impl<'a> TestAppWrapper<'a> {
                 asset_infos: asset_infos.to_vec(),
                 init_params: Some(to_binary(&init_params).unwrap()),
             },
-            &coins(100_0000000, "uosmo"),
+            &coins(100_000000, "uosmo"),
             &self.signer,
         )?;
 
@@ -358,7 +358,7 @@ impl<'a> TestAppWrapper<'a> {
     ) -> RunnerExecuteResult<MsgSwapExactAmountInResponse> {
         self.pool_manager.swap_exact_amount_in(
             MsgSwapExactAmountIn {
-                sender: sender.address().to_string(),
+                sender: sender.address(),
                 routes: vec![SwapAmountInRoute {
                     pool_id,
                     // I assume it doesn't matter in our context as pair has only 2 assets
@@ -380,7 +380,7 @@ impl<'a> TestAppWrapper<'a> {
     ) -> RunnerExecuteResult<MsgSwapExactAmountOutResponse> {
         self.pool_manager.swap_exact_amount_out(
             MsgSwapExactAmountOut {
-                sender: sender.address().to_string(),
+                sender: sender.address(),
                 routes: vec![SwapAmountOutRoute {
                     pool_id,
                     // I assume it doesn't matter in our context as pair has only 2 assets
@@ -460,7 +460,7 @@ impl<'a> TestAppWrapper<'a> {
     {
         self.wasm
             .instantiate(self.code_ids[name], msg, None, None, funds, &self.signer)
-            .map(|res| res.data.address.to_string())
+            .map(|res| res.data.address)
             .map_err(Into::into)
     }
 }

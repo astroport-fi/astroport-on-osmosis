@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use astroport::asset::{addr_opt_validate, pair_info_by_pool, AssetInfo, PairInfo};
+use astroport::asset::{addr_opt_validate, AssetInfo, PairInfo};
 use astroport::common::{claim_ownership, drop_ownership_proposal, propose_new_owner};
 use astroport::factory::{
     Config, ConfigResponse, ExecuteMsg, FeeInfoResponse, InstantiateMsg, PairConfig, PairType,
@@ -12,8 +12,8 @@ use astroport::pair::InstantiateMsg as PairInstantiateMsg;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, ensure, to_binary, wasm_execute, Binary, CosmosMsg, Deps, DepsMut, Empty, Env,
-    MessageInfo, Order, QuerierWrapper, Reply, Response, StdError, StdResult, SubMsg, WasmMsg,
+    attr, ensure, to_binary, wasm_execute, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Order,
+    QuerierWrapper, Reply, Response, StdError, StdResult, SubMsg,
 };
 use cw2::set_contract_version;
 use cw_utils::must_pay;
@@ -268,8 +268,8 @@ pub fn execute_create_pair(
     // We don't need to pass fees because Osmosis handles it internally and charges factory's balance
     let amount = must_pay(&info, CREATE_FEE_DENOM)?;
     ensure!(
-        amount.u128() > CREATE_FEE,
-        StdError::generic_err("Not enough funds sent. Pool initialization costs 100 OSMO")
+        amount.u128() == CREATE_FEE,
+        StdError::generic_err("Incorrect funds sent. Pool initialization costs 100 OSMO")
     );
     check_asset_infos(deps.querier, &asset_infos)?;
 
@@ -381,24 +381,28 @@ pub fn deregister(
     let pair_addr = PAIRS.load(deps.storage, &pair_key(&asset_infos))?;
     PAIRS.remove(deps.storage, &pair_key(&asset_infos));
 
-    let mut messages = vec![];
+    let mut response = Response::new().add_attributes(vec![
+        attr("action", "deregister"),
+        attr("pair_contract_addr", &pair_addr),
+    ]);
+
     if let Some(generator) = config.generator_address {
-        let pair_info = pair_info_by_pool(&deps.querier, &pair_addr)?;
+        let pair_info = deps
+            .querier
+            .query_wasm_smart::<PairInfo>(pair_addr, &pair::QueryMsg::Pair {})?;
 
         // sets the allocation point to zero for the lp_token
-        messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: generator.to_string(),
-            msg: to_binary(&DeactivatePool {
+        response.messages.push(SubMsg::new(wasm_execute(
+            &generator,
+            // TODO: TBD new generator API
+            &DeactivatePool {
                 lp_token: pair_info.liquidity_token.to_string(),
-            })?,
-            funds: vec![],
-        }));
+            },
+            vec![],
+        )?));
     }
 
-    Ok(Response::new().add_messages(messages).add_attributes(vec![
-        attr("action", "deregister"),
-        attr("pair_contract_addr", pair_addr),
-    ]))
+    Ok(response)
 }
 
 /// Exposes all the queries available in the contract.
