@@ -27,13 +27,15 @@ use astroport_pcl_common::{calc_d, get_xcp};
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     attr, coin, ensure, from_binary, Addr, Binary, Decimal, Decimal256, DepsMut, Env, MessageInfo,
-    Response, StdError, StdResult, Uint128,
+    Reply, Response, StdError, StdResult, SubMsg, Uint128,
 };
 use cw2::set_contract_version;
 use cw_utils::must_pay;
 use itertools::Itertools;
 use osmosis_std::types::osmosis::poolmanager::v1beta1::{MsgSwapExactAmountIn, SwapAmountInRoute};
-use osmosis_std::types::osmosis::tokenfactory::v1beta1::{MsgBurn, MsgCreateDenom, MsgMint};
+use osmosis_std::types::osmosis::tokenfactory::v1beta1::{
+    MsgBurn, MsgCreateDenom, MsgCreateDenomResponse, MsgMint,
+};
 
 use astroport_on_osmosis::pair_pcl::ExecuteMsg;
 
@@ -51,6 +53,8 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const FACTORY_ADDRESS: &str = include_str!("factory_address");
 /// Tokenfactory LP token subdenom
 const LP_SUBDENOM: &str = "astroport/share";
+/// Reply ID for create denom reply
+const CREATE_DENOM_REPLY_ID: u64 = 1;
 /// An LP token's precision.
 pub(crate) const LP_TOKEN_PRECISION: u8 = 6;
 
@@ -132,11 +136,6 @@ pub fn instantiate(
         },
     };
 
-    let lp_denom = format!(
-        "factory/{contract_address}/{LP_SUBDENOM}",
-        contract_address = &env.contract.address
-    );
-
     // TODO: worth adding to README
     // NOTE: we are keeping Config as general as possible across all PCL implementations.
     // However, liquidity_token on osmosis is not a cw20 contract, but a native token.
@@ -144,7 +143,7 @@ pub fn instantiate(
     let config = Config {
         pair_info: PairInfo {
             contract_addr: env.contract.address.clone(),
-            liquidity_token: Addr::unchecked(&lp_denom),
+            liquidity_token: Addr::unchecked(""),
             asset_infos: msg.asset_infos.clone(),
             pair_type: PairType::Custom("concentrated".to_string()),
         },
@@ -166,13 +165,16 @@ pub fn instantiate(
     BufferManager::init(deps.storage, OBSERVATIONS, OBSERVATIONS_SIZE)?;
 
     // create lp denom
-    let msg_create_lp_denom = MsgCreateDenom {
-        sender: env.contract.address.to_string(),
-        subdenom: LP_SUBDENOM.to_owned(),
-    };
+    let msg_create_lp_denom = SubMsg::reply_on_success(
+        MsgCreateDenom {
+            sender: env.contract.address.to_string(),
+            subdenom: LP_SUBDENOM.to_owned(),
+        },
+        CREATE_DENOM_REPLY_ID,
+    );
 
     Ok(Response::new()
-        .add_message(msg_create_lp_denom)
+        .add_submessage(msg_create_lp_denom)
         .add_attribute(
             "asset_balances_tracking",
             if config.track_asset_balances {
@@ -180,9 +182,30 @@ pub fn instantiate(
             } else {
                 "disabled"
             },
-        )
-        .add_attribute("lp_denom", lp_denom))
+        ))
     // TODO: .set_data(to_binary(&AfterPoolCreated {create_pool_guages: None})?)
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
+    match msg.id {
+        CREATE_DENOM_REPLY_ID => {
+            let MsgCreateDenomResponse { new_token_denom } = msg.result.try_into()?;
+            CONFIG.update(deps.storage, |mut config| {
+                if config.pair_info.liquidity_token.as_str().is_empty() {
+                    config.pair_info.liquidity_token = Addr::unchecked(&new_token_denom);
+                    Ok(config)
+                } else {
+                    Err(StdError::generic_err(
+                        "Liquidity token denom is already set",
+                    ))
+                }
+            })?;
+
+            Ok(Response::new().add_attribute("lp_denom", new_token_denom))
+        }
+        _ => Err(StdError::generic_err(format!("Unknown reply id: {}", msg.id)).into()),
+    }
 }
 
 /// Exposes all the execute functions available in the contract.
