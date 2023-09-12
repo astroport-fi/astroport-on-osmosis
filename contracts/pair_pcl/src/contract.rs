@@ -628,6 +628,8 @@ fn execute_swap(
     let dispatch_swap_msg = MsgSwapExactAmountIn {
         sender: info.sender.to_string(),
         routes: vec![SwapAmountInRoute {
+            // If for some reason pool id was not set on instantiation any swap will fail which is totally safe.
+            // Pool contract must know its pool id in Osmosis DEX module.
             pool_id: POOL_ID.load(deps.storage)?,
             token_out_denom: "uosmo".to_string(), // TODO: Osmosis requires to pass any existing denom. However, not clear whether they assert this denom belongs to the pair or not
         }],
