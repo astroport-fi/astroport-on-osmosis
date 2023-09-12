@@ -1,19 +1,20 @@
-use astroport::asset::{native_asset_info, PairInfo};
+use astroport::asset::{native_asset_info, token_asset_info, PairInfo};
 use astroport::factory::{
-    ConfigResponse, ExecuteMsg, InstantiateMsg, PairConfig, PairType, PairsResponse, QueryMsg,
+    ConfigResponse, ExecuteMsg, FeeInfoResponse, InstantiateMsg, PairConfig, PairType,
+    PairsResponse, QueryMsg,
 };
 use astroport::{factory, pair};
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR};
 use cosmwasm_std::{
-    attr, coins, from_binary, to_binary, Addr, Reply, ReplyOn, StdError, SubMsg, SubMsgResponse,
-    SubMsgResult,
+    attr, coins, from_binary, to_binary, Addr, Empty, Reply, ReplyOn, StdError, SubMsg,
+    SubMsgResponse, SubMsgResult,
 };
 use cw_utils::PaymentError::NoFunds;
 use osmosis_std::types::osmosis::cosmwasmpool::v1beta1::{
     MsgCreateCosmWasmPool, MsgCreateCosmWasmPoolResponse,
 };
 
-use astroport_factory_osmosis::contract::{execute, instantiate, query, reply};
+use astroport_factory_osmosis::contract::{execute, instantiate, migrate, query, reply};
 use astroport_factory_osmosis::error::ContractError;
 use astroport_factory_osmosis::error::ContractError::PaymentError;
 
@@ -147,13 +148,12 @@ fn update_config() {
         fee_address: Some(String::from("new_fee_addr")),
         generator_address: Some(String::from("new_generator_addr")),
         whitelist_code_id: None,
-        coin_registry_address: None,
+        coin_registry_address: Some("registry".to_owned()),
     };
 
     let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
     assert_eq!(0, res.messages.len());
 
-    // It worked, let's query the state
     let query_res = query(deps.as_ref(), env, QueryMsg::Config {}).unwrap();
     let config_res: ConfigResponse = from_binary(&query_res).unwrap();
     assert_eq!(owner, config_res.owner);
@@ -177,8 +177,8 @@ fn update_config() {
         coin_registry_address: None,
     };
 
-    let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap_err();
-    assert_eq!(res, ContractError::Unauthorized {});
+    let err = execute(deps.as_mut(), env.clone(), info, msg).unwrap_err();
+    assert_eq!(err, ContractError::Unauthorized {});
 }
 
 #[test]
@@ -354,20 +354,56 @@ fn update_pair_config() {
         is_generator_disabled: false,
     };
 
-    let info = mock_info(owner.clone(), &[]);
+    let info = mock_info(owner, &[]);
     let msg = ExecuteMsg::UpdatePairConfig {
         config: pair_config_custom.clone(),
     };
 
     execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
-    // It worked, let's query the state
     let query_res = query(deps.as_ref(), env.clone(), QueryMsg::Config {}).unwrap();
     let config_res: ConfigResponse = from_binary(&query_res).unwrap();
     assert_eq!(
         vec![pair_config_custom.clone(), pair_config.clone()],
         config_res.pair_configs
     );
+
+    // disable pair and try to create a new pair
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info(owner, &[]),
+        ExecuteMsg::UpdatePairConfig {
+            config: PairConfig {
+                code_id: 0,
+                pair_type: PairType::Custom("test".to_string()),
+                total_fee_bps: 500,
+                maker_fee_bps: 5000,
+                is_disabled: true,
+                is_generator_disabled: false,
+            },
+        },
+    )
+    .unwrap();
+
+    let asset_infos = vec![
+        native_asset_info("asset0000".to_string()),
+        native_asset_info("asset0001".to_string()),
+    ];
+
+    let err = execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("user", &coins(1000_000000, "uosmo")),
+        ExecuteMsg::CreatePair {
+            pair_type: PairType::Custom("test".to_string()),
+            asset_infos,
+            init_params: None,
+        },
+    )
+    .unwrap_err();
+
+    assert_eq!(err, ContractError::PairConfigDisabled {});
 }
 
 #[test]
@@ -453,7 +489,7 @@ fn create_pair() {
 
     let res = execute(
         deps.as_mut(),
-        env,
+        env.clone(),
         mock_info("addr0000", &coins(1000_000000, "uosmo")),
         ExecuteMsg::CreatePair {
             pair_type: PairType::Xyk {},
@@ -508,7 +544,7 @@ fn register() {
             is_generator_disabled: false,
         }],
         token_code_id: 123u64,
-        fee_address: None,
+        fee_address: Some("maker".to_owned()),
         generator_address: Some("generator".to_owned()),
         owner: owner.to_string(),
         whitelist_code_id: 234u64,
@@ -518,6 +554,42 @@ fn register() {
     let env = mock_env();
     let info = mock_info("addr0000", &[]);
     instantiate(deps.as_mut(), env, info, msg).unwrap();
+
+    // Try to create a pair with equal assets
+    let msg = ExecuteMsg::CreatePair {
+        pair_type: PairType::Xyk {},
+        asset_infos: vec![
+            native_asset_info("asset".to_string()),
+            native_asset_info("asset".to_string()),
+        ],
+        init_params: None,
+    };
+    let err = execute(
+        deps.as_mut(),
+        mock_env(),
+        mock_info("addr0000", &coins(1000_000000, "uosmo")),
+        msg,
+    )
+    .unwrap_err();
+    assert_eq!(err, ContractError::DoublingAssets {});
+
+    // Try to create a pair with cw20 asset
+    let msg = ExecuteMsg::CreatePair {
+        pair_type: PairType::Xyk {},
+        asset_infos: vec![
+            native_asset_info("asset".to_string()),
+            token_asset_info(Addr::unchecked("cw20token")),
+        ],
+        init_params: None,
+    };
+    let err = execute(
+        deps.as_mut(),
+        mock_env(),
+        mock_info("addr0000", &coins(1000_000000, "uosmo")),
+        msg,
+    )
+    .unwrap_err();
+    assert_eq!(err, ContractError::NonNativeToken {});
 
     let asset_infos = vec![
         native_asset_info("asset0000".to_string()),
@@ -590,7 +662,7 @@ fn register() {
 
     let env = mock_env();
     let info = mock_info("addr0000", &coins(1000_000000, "uosmo"));
-    execute(deps.as_mut(), env.clone(), info, msg).unwrap();
+    execute(deps.as_mut(), env.clone(), info.clone(), msg.clone()).unwrap();
 
     let pair_info = PairInfo {
         asset_infos: asset_infos_2.clone(),
@@ -609,6 +681,10 @@ fn register() {
     };
 
     reply(deps.as_mut(), mock_env(), reply_msg.clone()).unwrap();
+
+    // Try to create one more pair with the same assets
+    let err = execute(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap_err();
+    assert_eq!(err, ContractError::PairWasCreated {});
 
     let query_msg = QueryMsg::Pairs {
         start_after: None,
@@ -714,5 +790,77 @@ fn register() {
             asset_infos: asset_infos.clone(),
             pair_type: PairType::Xyk {},
         },]
+    );
+
+    let res = query(
+        deps.as_ref(),
+        env.clone(),
+        QueryMsg::FeeInfo {
+            pair_type: PairType::Xyk {},
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        from_binary::<FeeInfoResponse>(&res).unwrap(),
+        FeeInfoResponse {
+            fee_address: Some(Addr::unchecked("maker")),
+            total_fee_bps: 100,
+            maker_fee_bps: 10,
+        }
+    );
+
+    let res = query(
+        deps.as_ref(),
+        env.clone(),
+        QueryMsg::BlacklistedPairTypes {},
+    )
+    .unwrap();
+    assert_eq!(from_binary::<[(); 0]>(&res).unwrap(), []);
+}
+
+const SET_POOL_ID_FAILED_REPLY_ID: u64 = 2;
+
+#[test]
+fn test_failed_replies() {
+    let mut deps = mock_dependencies();
+    let res = reply(
+        deps.as_mut(),
+        mock_env(),
+        Reply {
+            id: SET_POOL_ID_FAILED_REPLY_ID, // this reply is only processed on set_pool_id callback failure
+            result: SubMsgResult::Ok(SubMsgResponse {
+                events: vec![],
+                data: None,
+            }),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        res.attributes,
+        [
+            attr("action", "set_pool_id_reply"),
+            attr("state", "failed"),
+            attr("solution", "pass"),
+        ]
+    );
+
+    let err = reply(
+        deps.as_mut(),
+        mock_env(),
+        Reply {
+            id: 1000, // unknown reply id
+            result: SubMsgResult::Ok(SubMsgResponse {
+                events: vec![],
+                data: None,
+            }),
+        },
+    )
+    .unwrap_err();
+    assert_eq!(err, ContractError::FailedToParseReply {});
+
+    let err = migrate(deps.as_mut(), mock_env(), Empty {}).unwrap_err();
+    assert_eq!(
+        err,
+        StdError::generic_err("Migration is not implemented yet")
     );
 }
