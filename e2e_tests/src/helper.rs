@@ -251,7 +251,7 @@ impl<'a> TestAppWrapper<'a> {
                 asset_infos: asset_infos.to_vec(),
                 init_params: Some(to_binary(&init_params).unwrap()),
             },
-            &coins(100_000000, "uosmo"),
+            &coins(1000_000000, "uosmo"),
             &self.signer,
         )?;
 

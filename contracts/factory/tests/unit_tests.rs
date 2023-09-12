@@ -441,7 +441,7 @@ fn create_pair() {
     let res = execute(
         deps.as_mut(),
         env.clone(),
-        mock_info("addr0000", &coins(100_000000, "uosmo")),
+        mock_info("addr0000", &coins(1000_000000, "uosmo")),
         ExecuteMsg::CreatePair {
             pair_type: PairType::Stable {},
             asset_infos: asset_infos.clone(),
@@ -454,7 +454,7 @@ fn create_pair() {
     let res = execute(
         deps.as_mut(),
         env,
-        mock_info("addr0000", &coins(100_000000, "uosmo")),
+        mock_info("addr0000", &coins(1000_000000, "uosmo")),
         ExecuteMsg::CreatePair {
             pair_type: PairType::Xyk {},
             asset_infos: asset_infos.clone(),
@@ -531,7 +531,7 @@ fn register() {
     };
 
     let env = mock_env();
-    let info = mock_info("addr0000", &coins(100_000000, "uosmo"));
+    let info = mock_info("addr0000", &coins(1000_000000, "uosmo"));
     execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
     let pair_info = PairInfo {
@@ -589,7 +589,7 @@ fn register() {
     };
 
     let env = mock_env();
-    let info = mock_info("addr0000", &coins(100_000000, "uosmo"));
+    let info = mock_info("addr0000", &coins(1000_000000, "uosmo"));
     execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
     let pair_info = PairInfo {
@@ -671,7 +671,7 @@ fn register() {
 
     // Deregister from wrong acc
     let env = mock_env();
-    let info = mock_info("wrong_addr0000", &coins(100_000000, "uosmo"));
+    let info = mock_info("wrong_addr0000", &coins(1000_000000, "uosmo"));
     let res = execute(
         deps.as_mut(),
         env.clone(),
