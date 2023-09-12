@@ -264,7 +264,8 @@ pub fn execute_create_pair(
     asset_infos: Vec<AssetInfo>,
     init_params: Option<Binary>,
 ) -> Result<Response, ContractError> {
-    // Osmosis has 100 OSMO flat fee to create a pool.
+    // TODO: agreed with Osmosis that they will expose stargate query so we won't need to pin consts in the code
+    // Osmosis has 1000 OSMO flat fee to create a pool.
     // We don't need to pass fees because Osmosis handles it internally and charges factory's balance
     let amount = must_pay(&info, CREATE_FEE_DENOM)?;
     ensure!(
