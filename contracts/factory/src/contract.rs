@@ -39,7 +39,7 @@ const INSTANTIATE_PAIR_REPLY_ID: u64 = 1;
 const SET_POOL_ID_FAILED_REPLY_ID: u64 = 2;
 /// 100 OSMO flat fee to create pool
 const CREATE_FEE_DENOM: &str = "uosmo";
-const CREATE_FEE: u128 = 100_000000;
+const CREATE_FEE: u128 = 1000_000000;
 
 /// Creates a new contract with the specified parameters packed in the `msg` variable.
 ///
