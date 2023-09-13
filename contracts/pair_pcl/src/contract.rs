@@ -26,8 +26,8 @@ use astroport_pcl_common::{calc_d, get_xcp};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, coin, ensure, from_binary, Addr, Binary, Decimal, Decimal256, DepsMut, Env, MessageInfo,
-    Reply, Response, StdError, StdResult, SubMsg, Uint128,
+    attr, coin, ensure, from_binary, to_binary, Addr, Binary, Decimal, Decimal256, DepsMut, Env,
+    MessageInfo, Reply, Response, StdError, StdResult, SubMsg, Uint128,
 };
 use cw2::set_contract_version;
 use cw_utils::must_pay;
@@ -37,7 +37,7 @@ use osmosis_std::types::osmosis::tokenfactory::v1beta1::{
     MsgBurn, MsgCreateDenom, MsgCreateDenomResponse, MsgMint,
 };
 
-use astroport_on_osmosis::pair_pcl::ExecuteMsg;
+use astroport_on_osmosis::pair_pcl::{ExecuteMsg, SwapExactAmountInResponseData};
 
 use crate::error::ContractError;
 use crate::state::{
@@ -777,21 +777,28 @@ pub(crate) fn internal_swap(
         )?;
     }
 
-    Ok(Response::new().add_messages(messages).add_attributes(vec![
-        attr("action", "swap"),
-        attr("sender", sender),
-        attr("receiver", receiver),
-        attr("offer_asset", offer_asset_dec.info.to_string()),
-        attr("ask_asset", pools[ask_ind].info.to_string()),
-        attr("offer_amount", offer_asset.amount),
-        attr("return_amount", return_amount),
-        attr("spread_amount", spread_amount),
-        attr(
-            "commission_amount",
-            swap_result.total_fee.to_uint(ask_asset_prec)?,
-        ),
-        attr("maker_fee_amount", maker_fee),
-    ]))
+    let response_data = to_binary(&SwapExactAmountInResponseData {
+        token_out_amount: return_amount,
+    })?;
+
+    Ok(Response::new()
+        .add_messages(messages)
+        .add_attributes(vec![
+            attr("action", "swap"),
+            attr("sender", sender),
+            attr("receiver", receiver),
+            attr("offer_asset", offer_asset_dec.info.to_string()),
+            attr("ask_asset", pools[ask_ind].info.to_string()),
+            attr("offer_amount", offer_asset.amount),
+            attr("return_amount", return_amount),
+            attr("spread_amount", spread_amount),
+            attr(
+                "commission_amount",
+                swap_result.total_fee.to_uint(ask_asset_prec)?,
+            ),
+            attr("maker_fee_amount", maker_fee),
+        ])
+        .set_data(response_data))
 }
 
 /// Updates the pool configuration with the specified parameters in the `params` variable.

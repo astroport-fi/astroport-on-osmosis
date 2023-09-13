@@ -37,15 +37,8 @@ pub fn sudo(deps: DepsMut, env: Env, msg: SudoMessage) -> Result<Response, Contr
                 SWAP_PARAMS.remove(deps.storage);
             }
 
-            let response_data = to_binary(&SwapExactAmountInResponseData {
-                // TODO: extract amount from the response. Osmosis: "It’s needed in case of multi pool swap routing"
-                // https://github.com/osmosis-labs/osmosis/blob/294302637a47ffec5cafc0c1953e88a54390b20e/x/poolmanager/router.go#L102C3-L113
-                token_out_amount: 1u8.into(),
-            })?;
-            internal_swap(deps, env, sender, offer_asset, belief_price, max_spread, to).map(|res| {
-                res.add_attribute("method", "swap_exact_amount_in")
-                    .set_data(response_data)
-            })
+            internal_swap(deps, env, sender, offer_asset, belief_price, max_spread, to)
+                .map(|res| res.add_attribute("method", "swap_exact_amount_in"))
         }
         SudoMessage::SwapExactAmountOut { .. } => {
             todo!("Unsafe function! Osmosis doesn't pull out expected coins from sender balance!")
