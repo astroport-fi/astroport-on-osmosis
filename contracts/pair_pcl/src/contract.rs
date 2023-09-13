@@ -230,7 +230,7 @@ pub fn execute(
             max_spread,
             to,
             ..
-        } => execute_swap(deps, info, offer_asset, belief_price, max_spread, to),
+        } => execute_swap(deps, env, info, offer_asset, belief_price, max_spread, to),
         ExecuteMsg::WithdrawLiquidity { assets } => withdraw_liquidity(deps, env, info, assets),
         ExecuteMsg::UpdateConfig { params } => update_config(deps, env, info, params),
         ExecuteMsg::ProposeNewOwner { owner, expires_in } => {
@@ -604,6 +604,7 @@ fn withdraw_liquidity(
 
 fn execute_swap(
     deps: DepsMut,
+    env: Env,
     info: MessageInfo,
     offer_asset: Asset,
     belief_price: Option<Decimal>,
@@ -622,11 +623,12 @@ fn execute_swap(
         &SwapParams {
             belief_price,
             max_spread,
+            sender: info.sender,
             to: addr_opt_validate(deps.api, &to)?,
         },
     )?;
     let dispatch_swap_msg = MsgSwapExactAmountIn {
-        sender: info.sender.to_string(),
+        sender: env.contract.address.to_string(),
         routes: vec![SwapAmountInRoute {
             // If for some reason pool id was not set on instantiation any swap will fail which is totally safe.
             // Pool contract must know its pool id in Osmosis DEX module.

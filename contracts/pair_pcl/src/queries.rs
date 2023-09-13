@@ -151,8 +151,8 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 spot_price: spot_price.into(),
             })
         }
-        // TODO: PCL pools have dynamic fees which also depend on a swap size. Not sure whether we need to handle this query.
-        // TODO: However, Osmosis does this query prior calling sudo swap endpoint so I propose to leave default here.
+        // It was needed due to Osmosis legacy multi hop osmo swap fee reduction where it needs swap fee to pass into the swap interface.
+        // Osmosis confirmed we can safely set 0% here
         QueryMsg::GetSwapFee {} => to_binary(&GetSwapFeeResponse::default()),
         // TODO: there is no clear documentation how does it work
         QueryMsg::IsActive {} => to_binary(&IsActiveResponse { is_active: true }),
