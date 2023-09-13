@@ -270,7 +270,9 @@ pub fn execute_create_pair(
     let amount = must_pay(&info, CREATE_FEE_DENOM)?;
     ensure!(
         amount.u128() == CREATE_FEE,
-        StdError::generic_err("Incorrect funds sent. Pool initialization costs 100 OSMO")
+        StdError::generic_err(format!(
+            "Incorrect funds sent. Pool initialization costs {CREATE_FEE}{CREATE_FEE_DENOM}"
+        ))
     );
     check_asset_infos(deps.querier, &asset_infos)?;
 

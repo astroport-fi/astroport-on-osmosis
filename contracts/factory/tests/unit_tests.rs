@@ -470,7 +470,7 @@ fn create_pair() {
     assert_eq!(
         res,
         ContractError::Std(StdError::generic_err(
-            "Incorrect funds sent. Pool initialization costs 100 OSMO"
+            "Incorrect funds sent. Pool initialization costs 1000000000uosmo"
         ))
     );
 
