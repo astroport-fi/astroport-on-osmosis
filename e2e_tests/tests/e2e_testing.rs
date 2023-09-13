@@ -129,6 +129,17 @@ fn dex_swap_test() {
     assert_eq!(bar_bal, 0);
     assert_eq!(foo_bal, 994806);
 
+    // Direct swap via pair contract FOO -> BAR (which essentially proxies it to DEX module)
+    let asset = foo.with_balance(foo_bal);
+    helper
+        .swap_on_pair(&user, &pair_addr, &asset, None)
+        .unwrap();
+
+    let foo_bal = helper.coin_balance(&user.address().to_string(), &foo_denom);
+    let bar_bal = helper.coin_balance(&user.address().to_string(), &bar_denom);
+    assert_eq!(foo_bal, 0);
+    assert_eq!(bar_bal, 1984437);
+
     // TODO: this DEX endpoint is harmful!
     // Reverse swap via DEX: FOO -> BAR
     // let asset = foo.with_balance(1_000000u128);
@@ -143,18 +154,6 @@ fn dex_swap_test() {
     // let foo_bal = helper.coin_balance(&user2.address().to_string(), &foo_denom);
     // let bar_bal = helper.coin_balance(&user2.address().to_string(), &bar_denom);
     // dbg!(foo_bal, bar_bal);
-
-    // Direct swap via pair contract FOO -> BAR (which essentially proxies it to DEX module)
-    // TODO: currently throws an error "failed to execute message; message index: 0: dispatch: submessages: contract doesn't have permission: unauthorized"
-    // let asset = foo.with_balance(foo_bal);
-    // helper
-    //     .swap_on_pair(&user, &pair_addr, &asset, None)
-    //     .unwrap();
-    //
-    // let foo_bal = helper.coin_balance(&user.address().to_string(), &foo_denom);
-    // let bar_bal = helper.coin_balance(&user.address().to_string(), &bar_denom);
-    // assert_eq!(foo_bal, 0);
-    // assert_eq!(bar_bal, 1984437);
 }
 
 #[test]

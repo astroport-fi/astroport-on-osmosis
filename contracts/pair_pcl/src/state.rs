@@ -12,6 +12,7 @@ use cw_storage_plus::{Item, SnapshotMap};
 pub struct SwapParams {
     pub belief_price: Option<Decimal>,
     pub max_spread: Option<Decimal>,
+    pub sender: Addr,
     pub to: Option<Addr>,
 }
 

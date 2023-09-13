@@ -18,25 +18,29 @@ pub fn sudo(deps: DepsMut, env: Env, msg: SudoMessage) -> Result<Response, Contr
             token_out_min_amount,
             ..
         } => {
-            let sender = deps.api.addr_validate(&sender)?;
+            let mut sender = deps.api.addr_validate(&sender)?;
             let offer_asset = native_asset_info(token_in.denom).with_balance(token_in.amount);
 
             let mut belief_price = Some(Decimal::from_ratio(token_in.amount, token_out_min_amount));
-            // TODO: I assume Osmosis applies slippage on frontend side hence we won't disrupt
-            // TODO: this logic with our additional default 0.02% slippage tolerance
+            // Osmosis applies slippage on their frontend side hence we won't disrupt
+            // this logic with our additional default 0.02% slippage tolerance.
             let mut max_spread = Some(Decimal::zero());
             let mut to = None;
             // If swap was dispatched from Astroport pair it must have SWAP_PARAMS in the storage
             if let Some(swap_params) = SWAP_PARAMS.may_load(deps.storage)? {
                 belief_price = swap_params.belief_price;
                 max_spread = swap_params.max_spread;
+                sender = swap_params.sender;
                 to = swap_params.to;
-                // Remove params so they won't be used if SwapExactAmountIn is called directly from DEX module
+
+                // Remove params so they won't be used if SwapExactAmountIn is called directly from the DEX module
                 SWAP_PARAMS.remove(deps.storage);
             }
 
             let response_data = to_binary(&SwapExactAmountInResponseData {
-                token_out_amount: 1u8.into(), // TODO: does it matter if we send tokens ourselves?
+                // TODO: extract amount from the response. Osmosis: "It’s needed in case of multi pool swap routing"
+                // https://github.com/osmosis-labs/osmosis/blob/294302637a47ffec5cafc0c1953e88a54390b20e/x/poolmanager/router.go#L102C3-L113
+                token_out_amount: 1u8.into(),
             })?;
             internal_swap(deps, env, sender, offer_asset, belief_price, max_spread, to).map(|res| {
                 res.add_attribute("method", "swap_exact_amount_in")
@@ -45,6 +49,7 @@ pub fn sudo(deps: DepsMut, env: Env, msg: SudoMessage) -> Result<Response, Contr
         }
         SudoMessage::SwapExactAmountOut { .. } => {
             todo!("Unsafe function! Osmosis doesn't pull out expected coins from sender balance!")
+            // TODO: implement according to internal Osmosis logic described here https://github.com/osmosis-labs/osmosis/blob/294302637a47ffec5cafc0c1953e88a54390b20e/x/cosmwasmpool/pool_module.go#L272-L324
             /*let sender = deps.api.addr_validate(&sender)?;
             let ask_asset = native_asset_info(token_out.denom).with_balance(token_out.amount);
 
