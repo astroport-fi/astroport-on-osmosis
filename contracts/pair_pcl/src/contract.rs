@@ -679,6 +679,7 @@ pub(crate) fn internal_swap(
     let ask_ind = 1 ^ offer_ind;
     let ask_asset_prec = precisions.get_precision(&pools[ask_ind].info)?;
 
+    // Offer pool must have offer amount in it. We need to subtract it from the pool balance
     pools[offer_ind].amount -= offer_asset_dec.amount;
 
     before_swap_check(&pools, offer_asset_dec.amount)?;

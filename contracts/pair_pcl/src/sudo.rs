@@ -1,13 +1,23 @@
 use astroport::asset::{native_asset_info, AssetInfoExt};
+use astroport::cosmwasm_ext::{DecimalToInteger, IntegerToDecimal};
+use astroport::observation::{PrecommitObservation, MIN_TRADE_SIZE};
+use astroport::querier::query_fee_info;
+use astroport_pcl_common::state::Precisions;
+use astroport_pcl_common::utils::{assert_max_spread, compute_offer_amount, compute_swap};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{to_binary, Decimal, DepsMut, Env, Response};
+use cosmwasm_std::{
+    attr, coin, ensure, to_binary, BankMsg, Coin, Decimal, Decimal256, DepsMut, Env, Response,
+    StdError, Uint128,
+};
+use itertools::Itertools;
 
-use astroport_on_osmosis::pair_pcl::{SudoMessage, SwapExactAmountInResponseData};
+use astroport_on_osmosis::pair_pcl::{SudoMessage, SwapExactAmountOutResponseData};
 
-use crate::contract::internal_swap;
+use crate::contract::{internal_swap, LP_TOKEN_PRECISION};
 use crate::error::ContractError;
-use crate::state::SWAP_PARAMS;
+use crate::state::{BALANCES, CONFIG, SWAP_PARAMS};
+use crate::utils::{accumulate_swap_sizes, query_native_supply};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn sudo(deps: DepsMut, env: Env, msg: SudoMessage) -> Result<Response, ContractError> {
@@ -40,44 +50,206 @@ pub fn sudo(deps: DepsMut, env: Env, msg: SudoMessage) -> Result<Response, Contr
             internal_swap(deps, env, sender, offer_asset, belief_price, max_spread, to)
                 .map(|res| res.add_attribute("method", "swap_exact_amount_in"))
         }
-        SudoMessage::SwapExactAmountOut { .. } => {
-            todo!("Unsafe function! Osmosis doesn't pull out expected coins from sender balance!")
-            // TODO: implement according to internal Osmosis logic described here https://github.com/osmosis-labs/osmosis/blob/294302637a47ffec5cafc0c1953e88a54390b20e/x/cosmwasmpool/pool_module.go#L272-L324
-            /*let sender = deps.api.addr_validate(&sender)?;
-            let ask_asset = native_asset_info(token_out.denom).with_balance(token_out.amount);
-
-            let (_, offer_asset) =
-                query_reverse_simulation(deps.as_ref(), env.clone(), ask_asset.clone())?;
-
-            ensure!(
-                offer_asset.amount <= token_in_max_amount,
-                StdError::generic_err(
-                    format!("Not enough tokens to perform swap. Need {} but token_in_max_amount is {token_in_max_amount}", ask_asset.to_string())
-                )
-            );
-
-            // Since PCL has dynamic fees reverse simulation is not able to predict fees upfront and applies max possible fee.
-            // Pretending there was direct swap to get 100% accurate result.
-            let belief_price = Some(Decimal::from_ratio(token_in_max_amount, token_out.amount));
-            let max_spread = Some(Decimal::zero());
-            let to = None;
-
-            internal_swap(
-                deps,
-                env,
-                sender,
-                offer_asset.clone(),
-                belief_price,
-                max_spread,
-                to,
-            )
-            .map(|res| {
-                res.add_attribute("method", "swap_exact_amount_out")
-                    .set_data(to_binary(&SwapExactAmountOutResponseData {
-                        token_in_amount: offer_asset.amount,
-                    })?)
-            })*/
-        }
+        SudoMessage::SwapExactAmountOut {
+            sender,
+            token_in_denom,
+            token_in_max_amount,
+            token_out,
+            ..
+        } => swap_exact_amount_out(
+            deps,
+            env,
+            sender,
+            token_in_denom,
+            token_in_max_amount,
+            token_out,
+        ),
         SudoMessage::SetActive { .. } => todo!("Do we need this?"),
     }
+}
+
+/// Osmosis cosmwasmpool module guarantees that token_in_max_amount is always sent to the contract
+/// https://github.com/osmosis-labs/osmosis/blob/294302637a47ffec5cafc0c1953e88a54390b20e/x/cosmwasmpool/pool_module.go#L288-L293
+fn swap_exact_amount_out(
+    deps: DepsMut,
+    env: Env,
+    sender: String,
+    token_in_denom: String,
+    token_in_max_amount: Uint128,
+    token_out: Coin,
+) -> Result<Response, ContractError> {
+    let mut config = CONFIG.load(deps.storage)?;
+    let precisions = Precisions::new(deps.storage)?;
+    let ask_asset = native_asset_info(token_out.denom).with_balance(token_out.amount);
+    let ask_asset_prec = precisions.get_precision(&ask_asset.info)?;
+    let ask_amount_dec = token_out.amount.to_decimal256(ask_asset_prec)?;
+
+    let mut pools = config
+        .pair_info
+        .query_pools(&deps.querier, &env.contract.address)?;
+
+    let (ask_ind, _) = pools
+        .iter()
+        .find_position(|asset| asset.info == ask_asset.info)
+        .ok_or_else(|| ContractError::InvalidAsset(ask_asset.info.to_string()))?;
+    let offer_ind = 1 ^ ask_ind;
+    let offer_asset_prec = precisions.get_precision(&pools[offer_ind].info)?;
+
+    // Offer pool must have token_in_max_amount in it. We need to subtract it from the pool balance
+    pools[offer_ind].amount -= token_in_max_amount;
+
+    let mut xs = pools
+        .iter()
+        .map(|asset| {
+            asset
+                .amount
+                .to_decimal256(precisions.get_precision(&asset.info)?)
+                .map_err(Into::into)
+        })
+        .collect::<Result<Vec<_>, ContractError>>()?;
+
+    let (offer_amount, ..) = compute_offer_amount(&xs, ask_amount_dec, ask_ind, &config, &env)?;
+
+    let offer_amount = offer_amount.to_uint(offer_asset_prec)?;
+    let offer_asset = pools[offer_ind].info.with_balance(offer_amount);
+
+    ensure!(
+        offer_asset.amount <= token_in_max_amount,
+        StdError::generic_err(
+            format!("Not enough tokens to perform swap. Need {} but token_in_max_amount is {token_in_max_amount}", ask_asset.to_string())
+        )
+    );
+
+    // Since PCL has dynamic fees reverse simulation is not able to predict fees upfront and applies max possible fee.
+    // Pretending there was direct swap to get 100% accurate result.
+    let belief_price = Some(Decimal::from_ratio(token_in_max_amount, token_out.amount));
+    let max_spread = Some(Decimal::zero());
+    let offer_asset_prec = precisions.get_precision(&offer_asset.info)?;
+    let offer_asset_dec = offer_asset.to_decimal_asset(offer_asset_prec)?;
+
+    // Get fee info from the factory
+    let fee_info = query_fee_info(
+        &deps.querier,
+        &config.factory_addr,
+        config.pair_info.pair_type.clone(),
+    )?;
+    let mut maker_fee_share = Decimal256::zero();
+    if fee_info.fee_address.is_some() {
+        maker_fee_share = fee_info.maker_fee_rate.into();
+    }
+
+    let swap_result = compute_swap(
+        &xs,
+        offer_asset_dec.amount,
+        ask_ind,
+        &config,
+        &env,
+        maker_fee_share,
+    )?;
+    xs[offer_ind] += offer_asset_dec.amount;
+    xs[ask_ind] -= swap_result.dy + swap_result.maker_fee;
+
+    let return_amount = swap_result.dy.to_uint(ask_asset_prec)?;
+    let spread_amount = swap_result.spread_fee.to_uint(ask_asset_prec)?;
+    assert_max_spread(
+        belief_price,
+        max_spread,
+        offer_asset.amount,
+        return_amount,
+        spread_amount,
+    )?;
+
+    let total_share = query_native_supply(&deps.querier, &config.pair_info.liquidity_token)?
+        .to_decimal256(LP_TOKEN_PRECISION)?;
+
+    let last_price = swap_result.calc_last_price(offer_asset_dec.amount, offer_ind);
+
+    // update_price() works only with internal representation
+    xs[1] *= config.pool_state.price_state.price_scale;
+    config
+        .pool_state
+        .update_price(&config.pool_params, &env, total_share, &xs, last_price)?;
+
+    let mut messages = vec![pools[ask_ind]
+        .info
+        .with_balance(return_amount)
+        .into_msg(&sender)?];
+
+    let mut maker_fee = Uint128::zero();
+    if let Some(fee_address) = fee_info.fee_address {
+        maker_fee = swap_result.maker_fee.to_uint(ask_asset_prec)?;
+        if !maker_fee.is_zero() {
+            let fee = pools[ask_ind].info.with_balance(maker_fee);
+            messages.push(fee.into_msg(fee_address)?);
+        }
+    }
+
+    // Store observation from precommit data
+    accumulate_swap_sizes(deps.storage, &env)?;
+
+    // Store time series data in precommit observation.
+    // Skipping small unsafe values which can seriously mess oracle price due to rounding errors.
+    // This data will be reflected in observations in the next action.
+    if offer_asset_dec.amount >= MIN_TRADE_SIZE && swap_result.dy >= MIN_TRADE_SIZE {
+        let (base_amount, quote_amount) = if offer_ind == 0 {
+            (offer_asset.amount, return_amount)
+        } else {
+            (return_amount, offer_asset.amount)
+        };
+        PrecommitObservation::save(deps.storage, &env, base_amount, quote_amount)?;
+    }
+
+    CONFIG.save(deps.storage, &config)?;
+
+    if config.track_asset_balances {
+        BALANCES.save(
+            deps.storage,
+            &pools[offer_ind].info,
+            &(pools[offer_ind].amount + offer_asset_dec.amount.to_uint(offer_asset_prec)?),
+            env.block.height,
+        )?;
+        BALANCES.save(
+            deps.storage,
+            &pools[ask_ind].info,
+            &(pools[ask_ind].amount - return_amount - maker_fee),
+            env.block.height,
+        )?;
+    }
+
+    let response_data = to_binary(&SwapExactAmountOutResponseData {
+        token_in_amount: offer_asset.amount,
+    })?;
+
+    let mut attrs = vec![
+        attr("method", "swap_exact_amount_out"),
+        attr("sender", sender.clone()),
+        attr("offer_asset", offer_asset.info.to_string()),
+        attr("ask_asset", ask_asset.info.to_string()),
+        attr("offer_amount", offer_asset.amount),
+        attr("return_amount", return_amount),
+        attr("spread_amount", spread_amount),
+        attr(
+            "commission_amount",
+            swap_result.total_fee.to_uint(ask_asset_prec)?,
+        ),
+        attr("maker_fee_amount", maker_fee),
+    ];
+
+    let excess_amount = token_in_max_amount.saturating_sub(offer_asset.amount);
+    if !excess_amount.is_zero() {
+        let excess_coin = coin(excess_amount.u128(), token_in_denom);
+        attrs.push(attr("excess_tokens", excess_coin.to_string()));
+        messages.push(
+            BankMsg::Send {
+                to_address: sender,
+                amount: vec![excess_coin],
+            }
+            .into(),
+        );
+    }
+
+    Ok(Response::new()
+        .add_messages(messages)
+        .add_attributes(attrs)
+        .set_data(response_data))
 }

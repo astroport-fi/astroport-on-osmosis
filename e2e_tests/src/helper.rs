@@ -375,6 +375,7 @@ impl<'a> TestAppWrapper<'a> {
         &self,
         sender: &SigningAccount,
         pool_id: u64,
+        token_in_denom: &str,
         token_in_max_amount: u128,
         exact_asset_out: &Asset,
     ) -> RunnerExecuteResult<MsgSwapExactAmountOutResponse> {
@@ -383,8 +384,7 @@ impl<'a> TestAppWrapper<'a> {
                 sender: sender.address(),
                 routes: vec![SwapAmountOutRoute {
                     pool_id,
-                    // I assume it doesn't matter in our context as pair has only 2 assets
-                    token_in_denom: "uosmo".to_string(),
+                    token_in_denom: token_in_denom.to_string(),
                 }],
                 token_in_max_amount: token_in_max_amount.to_string(),
                 token_out: Some(exact_asset_out.as_coin().unwrap().into()),

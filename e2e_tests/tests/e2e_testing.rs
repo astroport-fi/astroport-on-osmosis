@@ -65,15 +65,15 @@ fn provide_withdraw_test() {
         )
         .unwrap();
 
-    let lp_bal = helper.coin_balance(&helper.signer.address().to_string(), &lp_token);
+    let lp_bal = helper.coin_balance(&helper.signer.address(), &lp_token);
 
-    let foo_bal_before = helper.coin_balance(&helper.signer.address().to_string(), &foo_denom);
-    let bar_bal_before = helper.coin_balance(&helper.signer.address().to_string(), &bar_denom);
+    let foo_bal_before = helper.coin_balance(&helper.signer.address(), &foo_denom);
+    let bar_bal_before = helper.coin_balance(&helper.signer.address(), &bar_denom);
     helper
         .withdraw(&helper.signer, &pair_addr, coin(lp_bal, &lp_token))
         .unwrap();
-    let foo_bal_after = helper.coin_balance(&helper.signer.address().to_string(), &foo_denom);
-    let bar_bal_after = helper.coin_balance(&helper.signer.address().to_string(), &bar_denom);
+    let foo_bal_after = helper.coin_balance(&helper.signer.address(), &foo_denom);
+    let bar_bal_after = helper.coin_balance(&helper.signer.address(), &bar_denom);
 
     assert_eq!(foo_bal_after - foo_bal_before, 54999_999257);
     assert_eq!(bar_bal_after - bar_bal_before, 99999_998650);
@@ -115,8 +115,8 @@ fn dex_swap_test() {
 
     helper.swap_on_dex(&user, pool_id, &asset).unwrap();
 
-    let foo_bal = helper.coin_balance(&user.address().to_string(), &foo_denom);
-    let bar_bal = helper.coin_balance(&user.address().to_string(), &bar_denom);
+    let foo_bal = helper.coin_balance(&user.address(), &foo_denom);
+    let bar_bal = helper.coin_balance(&user.address(), &bar_denom);
     assert_eq!(foo_bal, 0);
     assert_eq!(bar_bal, 1_994798);
 
@@ -124,8 +124,8 @@ fn dex_swap_test() {
     let asset = bar.with_balance(bar_bal);
     helper.swap_on_dex(&user, pool_id, &asset).unwrap();
 
-    let foo_bal = helper.coin_balance(&user.address().to_string(), &foo_denom);
-    let bar_bal = helper.coin_balance(&user.address().to_string(), &bar_denom);
+    let foo_bal = helper.coin_balance(&user.address(), &foo_denom);
+    let bar_bal = helper.coin_balance(&user.address(), &bar_denom);
     assert_eq!(bar_bal, 0);
     assert_eq!(foo_bal, 994806);
 
@@ -135,25 +135,25 @@ fn dex_swap_test() {
         .swap_on_pair(&user, &pair_addr, &asset, None)
         .unwrap();
 
-    let foo_bal = helper.coin_balance(&user.address().to_string(), &foo_denom);
-    let bar_bal = helper.coin_balance(&user.address().to_string(), &bar_denom);
+    let foo_bal = helper.coin_balance(&user.address(), &foo_denom);
+    let bar_bal = helper.coin_balance(&user.address(), &bar_denom);
     assert_eq!(foo_bal, 0);
     assert_eq!(bar_bal, 1984437);
 
-    // TODO: this DEX endpoint is harmful!
     // Reverse swap via DEX: FOO -> BAR
-    // let asset = foo.with_balance(1_000000u128);
-    // let user2 = helper
-    //     .app
-    //     .init_account(&[asset.as_coin().unwrap(), gas_fee()])
-    //     .unwrap();
-    // let ask_asset = bar.with_balance(800_000u128);
-    // helper
-    //     .reverse_swap_on_dex(&user2, pool_id, 900_000, &ask_asset)
-    //     .unwrap();
-    // let foo_bal = helper.coin_balance(&user2.address().to_string(), &foo_denom);
-    // let bar_bal = helper.coin_balance(&user2.address().to_string(), &bar_denom);
-    // dbg!(foo_bal, bar_bal);
+    let asset = foo.with_balance(1_000000u128);
+    let user2 = helper
+        .app
+        .init_account(&[asset.as_coin().unwrap(), gas_fee()])
+        .unwrap();
+    let ask_asset = bar.with_balance(1_900000u128);
+    helper
+        .reverse_swap_on_dex(&user2, pool_id, &foo_denom, asset.amount.u128(), &ask_asset)
+        .unwrap();
+    let foo_bal = helper.coin_balance(&user2.address(), &foo_denom);
+    let bar_bal = helper.coin_balance(&user2.address(), &bar_denom);
+    assert_eq!(foo_bal, 91406); // excess tokens sent back to the user2
+    assert_eq!(bar_bal, 1_903626); // PCL pool gives slightly more tokens than expected (due to dynamic fees)
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn init_outside_of_factory() {
                 })
                 .unwrap()
                 .to_vec(),
-                sender: helper.signer.address().to_string(),
+                sender: helper.signer.address(),
             },
             MsgCreateCosmWasmPool::TYPE_URL,
             &helper.signer,
