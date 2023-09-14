@@ -76,7 +76,7 @@ pub fn instantiate(
         return Err(ContractError::PairConfigDuplicate {});
     }
 
-    let mut attrs = vec![attr("instantiate", format!("{CONTRACT_NAME}"))];
+    let mut attrs = vec![attr("instantiate", CONTRACT_NAME)];
     for pc in msg.pair_configs.iter() {
         // Validate total and maker fee bps
         if !pc.valid_fee_bps() {
@@ -396,7 +396,7 @@ pub fn deregister(
 
         // sets the allocation point to zero for the lp_token
         response.messages.push(SubMsg::new(wasm_execute(
-            &generator,
+            generator,
             // TODO: TBD new generator API
             &DeactivatePool {
                 lp_token: pair_info.liquidity_token.to_string(),

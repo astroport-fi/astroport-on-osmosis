@@ -145,7 +145,7 @@ pub fn instantiate(
         pair_info: PairInfo {
             contract_addr: env.contract.address.clone(),
             liquidity_token: Addr::unchecked(""),
-            asset_infos: msg.asset_infos.clone(),
+            asset_infos: msg.asset_infos,
             pair_type: PairType::Custom("concentrated".to_string()),
         },
         factory_addr,

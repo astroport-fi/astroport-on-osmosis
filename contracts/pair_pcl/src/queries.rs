@@ -148,9 +148,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 )))
             }?;
 
-            to_binary(&SpotPriceResponse {
-                spot_price: spot_price.into(),
-            })
+            to_binary(&SpotPriceResponse { spot_price })
         }
         // It was needed due to Osmosis legacy multi hop osmo swap fee reduction where it needs swap fee to pass into the swap interface.
         // Osmosis confirmed we can safely set 0% here
