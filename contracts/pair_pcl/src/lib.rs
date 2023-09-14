@@ -1,6 +1,6 @@
 pub mod contract;
-mod error;
+pub mod error;
 pub mod queries;
 mod state;
-mod sudo;
+pub mod sudo;
 mod utils;

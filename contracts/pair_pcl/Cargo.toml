@@ -22,3 +22,15 @@ cw2 = "1"
 itertools = "0.11"
 thiserror = "1"
 osmosis-std = "0.17.0-rc0"
+
+[dev-dependencies]
+#cw-multi-test = { path = "../../../cw-multi-test", features = ["stargate"] }
+#cw-multi-test = { git = "https://github.com/astroport-fi/cw-multi-test", branch = "astroport_cozy_fork", features = ["stargate"] }
+cw-multi-test = { git = "https://github.com/epanchee/cw-multi-test", branch = "astroport_cozy_fork", features = ["stargate"] }
+anyhow = "1"
+derivative = "2"
+astroport-native-coin-registry = "1"
+astroport-factory = { package = "astroport-factory-osmosis", path = "../factory" }
+
+# this contract only to test cw20 is not allowed in this Astroport version
+astroport-token = "1"
