@@ -5,7 +5,7 @@ use astroport::pair::{
     ConfigResponse, PoolResponse, ReverseSimulationResponse, SimulationResponse,
 };
 use astroport::pair_concentrated::ConcentratedPoolConfig;
-use astroport::querier::{query_factory_config, query_fee_info, query_supply};
+use astroport::querier::{query_factory_config, query_fee_info};
 use astroport_pcl_common::state::Precisions;
 use astroport_pcl_common::utils::{
     before_swap_check, compute_offer_amount, compute_swap, get_share_in_assets,
@@ -19,14 +19,15 @@ use cosmwasm_std::{
 };
 use itertools::Itertools;
 
-use crate::contract::LP_TOKEN_PRECISION;
-use crate::error::ContractError;
-use crate::state::{BALANCES, CONFIG, OBSERVATIONS};
-use crate::utils::{pool_info, query_pools};
 use astroport_on_osmosis::pair_pcl::{
     CalcInAmtGivenOutResponse, CalcOutAmtGivenInResponse, GetSwapFeeResponse, IsActiveResponse,
     QueryMsg, SpotPriceResponse, TotalPoolLiquidityResponse,
 };
+
+use crate::contract::LP_TOKEN_PRECISION;
+use crate::error::ContractError;
+use crate::state::{BALANCES, CONFIG, OBSERVATIONS};
+use crate::utils::{pool_info, query_native_supply, query_pools};
 
 /// Exposes all the queries available in the contract.
 ///
@@ -186,7 +187,7 @@ fn query_share(deps: Deps, amount: Uint128) -> Result<Vec<Asset>, ContractError>
         &config,
         &precisions,
     )?;
-    let total_share = query_supply(&deps.querier, &config.pair_info.liquidity_token)?;
+    let total_share = query_native_supply(&deps.querier, &config.pair_info.liquidity_token)?;
     let refund_assets =
         get_share_in_assets(&pools, amount.saturating_sub(Uint128::one()), total_share);
 
@@ -299,7 +300,7 @@ pub fn query_reverse_simulation(
 /// Compute the current LP token virtual price.
 pub fn query_lp_price(deps: Deps, env: Env) -> StdResult<Decimal256> {
     let config = CONFIG.load(deps.storage)?;
-    let total_lp = query_supply(&deps.querier, &config.pair_info.liquidity_token)?
+    let total_lp = query_native_supply(&deps.querier, &config.pair_info.liquidity_token)?
         .to_decimal256(LP_TOKEN_PRECISION)?;
     if !total_lp.is_zero() {
         let precisions = Precisions::new(deps.storage)?;
