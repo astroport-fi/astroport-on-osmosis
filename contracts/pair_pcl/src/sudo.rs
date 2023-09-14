@@ -116,7 +116,7 @@ fn swap_exact_amount_out(
     ensure!(
         offer_asset.amount <= token_in_max_amount,
         StdError::generic_err(
-            format!("Not enough tokens to perform swap. Need {} but token_in_max_amount is {token_in_max_amount}", ask_asset.to_string())
+            format!("Not enough tokens to perform swap. Need {ask_asset} but token_in_max_amount is {token_in_max_amount}")
         )
     );
 
