@@ -395,9 +395,8 @@ pub fn provide_liquidity(
 
     let share = if total_share.is_zero() {
         let xcp = get_xcp(new_d, config.pool_state.price_state.price_scale);
-        let mint_amount = xcp
-            .checked_sub(MINIMUM_LIQUIDITY_AMOUNT.to_decimal256(LP_TOKEN_PRECISION)?)
-            .map_err(|_| ContractError::MinimumLiquidityAmountError {})?;
+        let mint_amount =
+            xcp.saturating_sub(MINIMUM_LIQUIDITY_AMOUNT.to_decimal256(LP_TOKEN_PRECISION)?);
 
         // share cannot become zero after minimum liquidity subtraction
         if mint_amount.is_zero() {
@@ -732,11 +731,10 @@ pub(crate) fn internal_swap(
 
     let receiver = to.unwrap_or_else(|| sender.clone());
 
-    let mut messages = vec![Asset {
-        info: pools[ask_ind].info.clone(),
-        amount: return_amount,
-    }
-    .into_msg(&receiver)?];
+    let mut messages = vec![pools[ask_ind]
+        .info
+        .with_balance(return_amount)
+        .into_msg(&receiver)?];
 
     let mut maker_fee = Uint128::zero();
     if let Some(fee_address) = fee_info.fee_address {
