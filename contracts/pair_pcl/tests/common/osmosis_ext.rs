@@ -45,7 +45,7 @@ impl Module for OsmosisStargate {
         QueryC: CustomQuery + DeserializeOwned + 'static,
     {
         match msg.type_url.as_str() {
-            "/osmosis.cosmwasmpool.v1beta1.MsgCreateCosmWasmPool" => {
+            MsgCreateCosmWasmPool::TYPE_URL => {
                 let cw_msg: MsgCreateCosmWasmPool = msg.value.try_into()?;
                 let init_wasm = WasmMsg::Instantiate {
                     admin: None,
@@ -89,7 +89,7 @@ impl Module for OsmosisStargate {
                 };
                 Ok(submsg_response.into())
             }
-            "/osmosis.tokenfactory.v1beta1.MsgCreateDenom" => {
+            MsgCreateDenom::TYPE_URL => {
                 let tf_msg: MsgCreateDenom = msg.value.try_into()?;
                 let submsg_response = SubMsgResponse {
                     events: vec![],
@@ -105,7 +105,7 @@ impl Module for OsmosisStargate {
                 };
                 Ok(submsg_response.into())
             }
-            "/osmosis.tokenfactory.v1beta1.MsgMint" => {
+            MsgMint::TYPE_URL => {
                 let tf_msg: MsgMint = msg.value.try_into()?;
                 let mint_coins = tf_msg
                     .amount
@@ -116,7 +116,7 @@ impl Module for OsmosisStargate {
                 };
                 router.sudo(api, storage, block, bank_sudo.into())
             }
-            "/osmosis.tokenfactory.v1beta1.MsgBurn" => {
+            MsgBurn::TYPE_URL => {
                 let tf_msg: MsgBurn = msg.value.try_into()?;
                 let burn_coins = tf_msg
                     .amount
@@ -127,7 +127,7 @@ impl Module for OsmosisStargate {
                 };
                 router.sudo(api, storage, block, bank_sudo.into())
             }
-            "/osmosis.poolmanager.v1beta1.MsgSwapExactAmountIn" => {
+            MsgSwapExactAmountIn::TYPE_URL => {
                 let pm_msg: MsgSwapExactAmountIn = msg.value.try_into()?;
                 let token_in = pm_msg.token_in.expect("token_in must be set!");
                 let inner_contract_msg = pair_pcl::SudoMessage::SwapExactAmountIn {
