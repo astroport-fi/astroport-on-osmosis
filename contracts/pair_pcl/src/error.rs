@@ -30,9 +30,6 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized {},
 
-    #[error("CW20 tokens can be swapped via Cw20::Send message only")]
-    Cw20DirectSwap {},
-
     #[error("You need to provide init params")]
     InitParamsNotFound {},
 
@@ -42,9 +39,6 @@ pub enum ContractError {
     #[error("Initial liquidity must be more than {}", MINIMUM_LIQUIDITY_AMOUNT)]
     MinimumLiquidityAmountError {},
 
-    #[error("Failed to parse or process reply message")]
-    FailedToParseReply {},
-
     #[error("Pair is not registered in the factory. Only swap and withdraw are allowed")]
     PairIsNotRegistered {},
 
@@ -53,9 +47,6 @@ pub enum ContractError {
 
     #[error("The asset {0} does not belong to the pair")]
     InvalidAsset(String),
-
-    #[error("Contract can't be migrated!")]
-    MigrationError {},
 
     #[error("Asset balances tracking is already enabled")]
     AssetBalancesTrackingIsAlreadyEnabled {},

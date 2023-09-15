@@ -207,9 +207,7 @@ impl Helper {
         params: ConcentratedPoolParams,
     ) -> AnyResult<Self> {
         let mut app = BasicAppBuilder::new()
-            .with_stargate(OsmosisStargate {
-                cw_pools: Default::default(),
-            })
+            .with_stargate(OsmosisStargate::default())
             .with_wasm::<FailingModule<Empty, Empty, Empty>, WasmKeeper<Empty, Empty>>(
                 WasmKeeper::new_with_custom_address_generator(HackyAddressGenerator::default()),
             )

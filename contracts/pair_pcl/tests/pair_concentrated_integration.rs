@@ -9,25 +9,25 @@ use astroport::cosmwasm_ext::AbsDiff;
 use astroport::observation::OracleObservation;
 use astroport::pair::{ExecuteMsg, PoolResponse};
 use astroport::pair_concentrated::{
-    ConcentratedPoolParams, ConcentratedPoolUpdateParams, PromoteParams, QueryMsg, UpdatePoolParams,
+    ConcentratedPoolParams, ConcentratedPoolUpdateParams, PromoteParams, UpdatePoolParams,
 };
 use astroport_pcl_common::consts::{AMP_MAX, AMP_MIN, MA_HALF_TIME_LIMITS};
 use astroport_pcl_common::error::PclError;
-use cosmwasm_std::{Addr, Decimal, StdError, Uint128};
+use cosmwasm_std::{Addr, Decimal, Fraction, StdError, Uint128};
 use cw_multi_test::Executor;
+use itertools::Itertools;
 
+use astroport_on_osmosis::pair_pcl::{
+    CalcInAmtGivenOutResponse, CalcOutAmtGivenInResponse, QueryMsg, SpotPriceResponse,
+    TotalPoolLiquidityResponse,
+};
 use astroport_pcl_osmo::error::ContractError;
 use common::helper::{dec_to_f64, f64_to_dec, AppExtension, Helper, TestCoin};
 
 mod common;
 
-#[test]
-fn check_observe_queries() {
-    let owner = Addr::unchecked("owner");
-
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
-
-    let params = ConcentratedPoolParams {
+fn common_pcl_params() -> ConcentratedPoolParams {
+    ConcentratedPoolParams {
         amp: f64_to_dec(40f64),
         gamma: f64_to_dec(0.000145),
         mid_fee: f64_to_dec(0.0026),
@@ -38,8 +38,16 @@ fn check_observe_queries() {
         price_scale: Decimal::one(),
         ma_half_time: 600,
         track_asset_balances: None,
-    };
-    let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
+    }
+}
+
+#[test]
+fn check_observe_queries() {
+    let owner = Addr::unchecked("owner");
+
+    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+
+    let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
     let user = Addr::unchecked("user");
     let offer_asset = helper.assets[&test_coins[0]].with_balance(100_000000u128);
@@ -93,18 +101,7 @@ fn check_observe_queries() {
 fn check_wrong_initialization() {
     let owner = Addr::unchecked("owner");
 
-    let params = ConcentratedPoolParams {
-        amp: f64_to_dec(40f64),
-        gamma: f64_to_dec(0.000145),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
-        price_scale: Decimal::from_ratio(2u8, 1u8),
-        ma_half_time: 600,
-        track_asset_balances: None,
-    };
+    let params = common_pcl_params();
 
     let err = Helper::new(&owner, vec![TestCoin::native("uluna")], params.clone()).unwrap_err();
 
@@ -182,18 +179,7 @@ fn check_create_pair_with_unsupported_denom() {
     let wrong_coins = vec![TestCoin::native("rc"), TestCoin::native("uluna")];
     let valid_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
 
-    let params = ConcentratedPoolParams {
-        amp: f64_to_dec(40f64),
-        gamma: f64_to_dec(0.000145),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
-        price_scale: Decimal::from_ratio(2u8, 1u8),
-        ma_half_time: 600,
-        track_asset_balances: None,
-    };
+    let params = common_pcl_params();
 
     let err = Helper::new(&owner, wrong_coins.clone(), params.clone()).unwrap_err();
     assert_eq!(
@@ -210,18 +196,8 @@ fn provide_and_withdraw() {
 
     let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
 
-    let params = ConcentratedPoolParams {
-        amp: f64_to_dec(40f64),
-        gamma: f64_to_dec(0.000145),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
-        price_scale: Decimal::from_ratio(2u8, 1u8),
-        ma_half_time: 600,
-        track_asset_balances: None,
-    };
+    let mut params = common_pcl_params();
+    params.price_scale = Decimal::from_ratio(2u8, 1u8);
 
     let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
 
@@ -447,18 +423,8 @@ fn check_imbalanced_provide() {
 
     let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
 
-    let mut params = ConcentratedPoolParams {
-        amp: f64_to_dec(40f64),
-        gamma: f64_to_dec(0.000145),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
-        price_scale: Decimal::from_ratio(2u8, 1u8),
-        ma_half_time: 600,
-        track_asset_balances: None,
-    };
+    let mut params = common_pcl_params();
+    params.price_scale = Decimal::from_ratio(2u8, 1u8);
 
     let mut helper = Helper::new(&owner, test_coins.clone(), params.clone()).unwrap();
 
@@ -633,20 +599,7 @@ fn check_reverse_swap() {
 
     let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
 
-    let params = ConcentratedPoolParams {
-        amp: f64_to_dec(40f64),
-        gamma: f64_to_dec(0.000145),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
-        price_scale: Decimal::one(),
-        ma_half_time: 600,
-        track_asset_balances: None,
-    };
-
-    let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
+    let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
     let assets = vec![
         helper.assets[&test_coins[0]].with_balance(100_000_000000u128),
@@ -674,19 +627,7 @@ fn check_swaps_simple() {
 
     let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
 
-    let params = ConcentratedPoolParams {
-        amp: f64_to_dec(40f64),
-        gamma: f64_to_dec(0.000145),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
-        price_scale: Decimal::one(),
-        ma_half_time: 600,
-        track_asset_balances: None,
-    };
-    let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
+    let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
     let user = Addr::unchecked("user");
     let offer_asset = helper.assets[&test_coins[0]].with_balance(100_000000u128);
@@ -780,19 +721,7 @@ fn check_swaps_with_price_update() {
 
     let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
 
-    let params = ConcentratedPoolParams {
-        amp: f64_to_dec(40f64),
-        gamma: f64_to_dec(0.000145),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
-        price_scale: Decimal::one(),
-        ma_half_time: 600,
-        track_asset_balances: None,
-    };
-    let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
+    let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
     helper.app.next_block(1000);
 
@@ -834,19 +763,7 @@ fn provides_and_swaps() {
 
     let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
 
-    let params = ConcentratedPoolParams {
-        amp: f64_to_dec(40f64),
-        gamma: f64_to_dec(0.000145),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
-        price_scale: Decimal::one(),
-        ma_half_time: 600,
-        track_asset_balances: None,
-    };
-    let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
+    let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
     helper.app.next_block(1000);
 
@@ -890,18 +807,8 @@ fn check_amp_gamma_change() {
 
     let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
 
-    let params = ConcentratedPoolParams {
-        amp: f64_to_dec(40f64),
-        gamma: f64_to_dec(0.0001),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
-        price_scale: Decimal::one(),
-        ma_half_time: 600,
-        track_asset_balances: None,
-    };
+    let mut params = common_pcl_params();
+    params.gamma = f64_to_dec(0.0001);
     let mut helper = Helper::new(&owner, test_coins, params).unwrap();
 
     let random_user = Addr::unchecked("random");
@@ -987,20 +894,7 @@ fn check_prices() {
 
     let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
 
-    let params = ConcentratedPoolParams {
-        amp: f64_to_dec(40f64),
-        gamma: f64_to_dec(0.000145),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
-        price_scale: Decimal::one(),
-        ma_half_time: 600,
-        track_asset_balances: None,
-    };
-
-    let helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
+    let helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
     let err = helper.query_prices().unwrap_err();
     assert_eq!(StdError::generic_err("Querier contract error: Generic error: Not implemented.Use { \"observe\" : { \"seconds_ago\" : ... } } instead.")
     , err);
@@ -1012,20 +906,7 @@ fn update_owner() {
 
     let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
 
-    let params = ConcentratedPoolParams {
-        amp: f64_to_dec(40f64),
-        gamma: f64_to_dec(0.000145),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
-        price_scale: Decimal::one(),
-        ma_half_time: 600,
-        track_asset_balances: None,
-    };
-
-    let mut helper = Helper::new(&owner, test_coins, params).unwrap();
+    let mut helper = Helper::new(&owner, test_coins, common_pcl_params()).unwrap();
 
     let new_owner = String::from("new_owner");
 
@@ -1137,20 +1018,9 @@ fn update_owner() {
 fn query_d_test() {
     let owner = Addr::unchecked("owner");
     let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
-    let params = ConcentratedPoolParams {
-        amp: f64_to_dec(40f64),
-        gamma: f64_to_dec(0.000145),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
-        price_scale: Decimal::one(),
-        ma_half_time: 600,
-        track_asset_balances: None,
-    };
+
     // create pair with test_coins
-    let helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
+    let helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
     // query current pool D value before providing any liquidity
     let err = helper.query_d().unwrap_err();
@@ -1166,21 +1036,8 @@ fn asset_balances_tracking_without_in_params() {
     let user1 = Addr::unchecked("user1");
     let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
 
-    let params = ConcentratedPoolParams {
-        amp: f64_to_dec(40f64),
-        gamma: f64_to_dec(0.000145),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
-        price_scale: Decimal::one(),
-        ma_half_time: 600,
-        track_asset_balances: None,
-    };
-
     // Instantiate pair without asset balances tracking
-    let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
+    let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
     let assets = vec![
         helper.assets[&test_coins[0]].with_balance(5_000000u128),
@@ -1253,20 +1110,9 @@ fn asset_balances_tracking_with_in_params() {
     let owner = Addr::unchecked("owner");
     let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
 
-    let params = ConcentratedPoolParams {
-        amp: f64_to_dec(40f64),
-        gamma: f64_to_dec(0.000145),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
-        price_scale: Decimal::one(),
-        ma_half_time: 600,
-        track_asset_balances: Some(true),
-    };
-
     // Instantiate pair without asset balances tracking
+    let mut params = common_pcl_params();
+    params.track_asset_balances = Some(true);
     let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
 
     let assets = vec![
@@ -1400,18 +1246,8 @@ fn provides_and_swaps_and_withdraw() {
     let half = Decimal::from_ratio(1u8, 2u8);
     let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
 
-    let params = ConcentratedPoolParams {
-        amp: f64_to_dec(40f64),
-        gamma: f64_to_dec(0.000145),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
-        price_scale: Decimal::from_ratio(1u8, 2u8),
-        ma_half_time: 600,
-        track_asset_balances: None,
-    };
+    let mut params = common_pcl_params();
+    params.price_scale = Decimal::from_ratio(1u8, 2u8);
     let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
 
     helper.app.next_block(1000);
@@ -1472,15 +1308,8 @@ fn provide_withdraw_provide() {
 
     let params = ConcentratedPoolParams {
         amp: f64_to_dec(10f64),
-        gamma: f64_to_dec(0.000145),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
         price_scale: Decimal::from_ratio(10u8, 1u8),
-        ma_half_time: 600,
-        track_asset_balances: None,
+        ..common_pcl_params()
     };
 
     let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
@@ -1513,21 +1342,9 @@ fn provide_withdraw_provide() {
 #[test]
 fn provide_withdraw_slippage() {
     let owner = Addr::unchecked("owner");
-
     let test_coins = vec![TestCoin::native("uusd"), TestCoin::native("uluna")];
-
-    let params = ConcentratedPoolParams {
-        amp: f64_to_dec(10f64),
-        gamma: f64_to_dec(0.000145),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
-        price_scale: Decimal::from_ratio(10u8, 1u8),
-        ma_half_time: 600,
-        track_asset_balances: None,
-    };
+    let mut params = common_pcl_params();
+    params.price_scale = Decimal::from_ratio(10u8, 1u8);
 
     let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
 
@@ -1582,15 +1399,8 @@ fn test_frontrun_before_initial_provide() {
 
     let params = ConcentratedPoolParams {
         amp: f64_to_dec(10f64),
-        gamma: f64_to_dec(0.000145),
-        mid_fee: f64_to_dec(0.0026),
-        out_fee: f64_to_dec(0.0045),
-        fee_gamma: f64_to_dec(0.00023),
-        repeg_profit_threshold: f64_to_dec(0.000002),
-        min_price_scale_delta: f64_to_dec(0.000146),
         price_scale: Decimal::from_ratio(10u8, 1u8),
-        ma_half_time: 600,
-        track_asset_balances: None,
+        ..common_pcl_params()
     };
 
     let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
@@ -1658,4 +1468,124 @@ fn test_frontrun_before_initial_provide() {
         .unwrap();
     assert_eq!(pools[0].amount.u128(), 320_624088);
     assert_eq!(pools[1].amount.u128(), 32_000000);
+}
+
+#[test]
+fn test_osmosis_specific_queries() {
+    let owner = Addr::unchecked("owner");
+
+    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+
+    let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
+
+    let provide_assets = [
+        helper.assets[&test_coins[0]].with_balance(100_000_000000u128),
+        helper.assets[&test_coins[1]].with_balance(100_000_000000u128),
+    ];
+    helper.provide_liquidity(&owner, &provide_assets).unwrap();
+
+    let offer_asset = helper.assets[&test_coins[0]].with_balance(100_000000u128);
+    let user = Addr::unchecked("user");
+    for _ in 0..10 {
+        helper.give_me_money(&[offer_asset.clone()], &user);
+        helper.swap(&user, &offer_asset, None).unwrap();
+    }
+
+    let osm_liq = helper
+        .app
+        .wrap()
+        .query_wasm_smart::<TotalPoolLiquidityResponse>(
+            &helper.pair_addr,
+            &QueryMsg::GetTotalPoolLiquidity {},
+        )
+        .unwrap()
+        .total_pool_liquidity;
+    let astro_liq = helper
+        .app
+        .wrap()
+        .query_wasm_smart::<PoolResponse>(&helper.pair_addr, &QueryMsg::Pool {})
+        .unwrap()
+        .assets
+        .into_iter()
+        .map(|a| a.as_coin().unwrap())
+        .collect_vec();
+    assert_eq!(osm_liq, astro_liq);
+
+    let osm_resp = helper
+        .app
+        .wrap()
+        .query_wasm_smart::<CalcOutAmtGivenInResponse>(
+            &helper.pair_addr,
+            &QueryMsg::CalcOutAmtGivenIn {
+                token_in: offer_asset.as_coin().unwrap(),
+                token_out_denom: "doesnt_matter".to_string(),
+                swap_fee: Default::default(),
+            },
+        )
+        .unwrap();
+    let astro_resp = helper.simulate_swap(&offer_asset, None).unwrap();
+    assert_eq!(osm_resp.token_out.amount, astro_resp.return_amount);
+
+    let osm_resp = helper
+        .app
+        .wrap()
+        .query_wasm_smart::<CalcInAmtGivenOutResponse>(
+            &helper.pair_addr,
+            &QueryMsg::CalcInAmtGivenOut {
+                token_out: offer_asset.as_coin().unwrap(),
+                token_in_denom: offer_asset.as_coin().unwrap().denom,
+                swap_fee: Default::default(),
+            },
+        )
+        .unwrap();
+    let astro_resp = helper.simulate_reverse_swap(&offer_asset, None).unwrap();
+    assert_eq!(osm_resp.token_in.amount, astro_resp.offer_amount);
+
+    let osm_resp = helper
+        .app
+        .wrap()
+        .query_wasm_smart::<SpotPriceResponse>(
+            &helper.pair_addr,
+            &QueryMsg::SpotPrice {
+                quote_asset_denom: helper.assets[&test_coins[1]].to_string(),
+                base_asset_denom: helper.assets[&test_coins[0]].to_string(),
+            },
+        )
+        .unwrap();
+    let astro_resp = helper.observe_price(0).unwrap();
+    assert_eq!(osm_resp.spot_price, astro_resp);
+
+    // query inverted price
+    let osm_resp = helper
+        .app
+        .wrap()
+        .query_wasm_smart::<SpotPriceResponse>(
+            &helper.pair_addr,
+            &QueryMsg::SpotPrice {
+                quote_asset_denom: helper.assets[&test_coins[0]].to_string(),
+                base_asset_denom: helper.assets[&test_coins[1]].to_string(),
+            },
+        )
+        .unwrap();
+    assert_eq!(osm_resp.spot_price, astro_resp.inv().unwrap());
+
+    let err = helper
+        .app
+        .wrap()
+        .query_wasm_smart::<SpotPriceResponse>(
+            &helper.pair_addr,
+            &QueryMsg::SpotPrice {
+                quote_asset_denom: "random".to_string(),
+                base_asset_denom: helper.assets[&test_coins[0]].to_string(),
+            },
+        )
+        .unwrap_err();
+    assert_eq!(
+        err,
+        StdError::generic_err(format!(
+            "Querier contract error: Generic error: Invalid pool denoms random {base}. Must be {base} {quote}",
+            quote = helper.assets[&test_coins[1]].to_string(),
+            base = helper.assets[&test_coins[0]].to_string()
+        ))
+    );
 }

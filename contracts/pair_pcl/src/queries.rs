@@ -150,8 +150,9 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
 
             to_binary(&SpotPriceResponse { spot_price })
         }
-        // It was needed due to Osmosis legacy multi hop osmo swap fee reduction where it needs swap fee to pass into the swap interface.
-        // Osmosis confirmed we can safely set 0% here
+        // Osmosis confirmed we can safely set 0% here.
+        // Osmosis team: it was needed due to Osmosis legacy multi hop osmo swap fee reduction where
+        // it needs swap fee to pass into the swap interface.
         QueryMsg::GetSwapFee {} => to_binary(&GetSwapFeeResponse::default()),
         // TODO: there is no clear documentation how does it work
         QueryMsg::IsActive {} => to_binary(&IsActiveResponse { is_active: true }),
@@ -327,7 +328,7 @@ pub fn query_config(deps: Deps, env: Env) -> StdResult<ConfigResponse> {
         Uint128::try_from(dec256_price_scale.atomics())?,
         dec256_price_scale.decimal_places(),
     )
-    .map_err(|e| StdError::generic_err(format!("{e}")))?;
+    .map_err(|e| StdError::generic_err(e.to_string()))?;
 
     let factory_config = query_factory_config(&deps.querier, &config.factory_addr)?;
 
