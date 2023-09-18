@@ -78,7 +78,7 @@ fn swap_exact_amount_out(
     token_in_max_amount: Uint128,
     token_out: Coin,
 ) -> Result<Response, ContractError> {
-    if &token_in_denom == &token_out.denom {
+    if token_in_denom == token_out.denom {
         return Err(StdError::generic_err(format!(
             "Invalid swap: {token_in_denom} to {token_in_denom}"
         ))
