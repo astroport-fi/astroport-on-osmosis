@@ -31,18 +31,6 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v2
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/bin
-            ~/.cargo/git/checkouts
-            ~/.cargo/git/db
-            ~/.cargo/registry/cache
-            ~/.cargo/registry/index
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
       - run: |
           git config url."ssh://git@github.com/astroport-fi/hidden_astroport_governance.git".insteadOf "https://github.com/astroport-fi/hidden_astroport_governance"
           git config url."ssh://git@github.com/astroport-fi/hidden_astroport_core.git".insteadOf "https://github.com/astroport-fi/hidden_astroport_core"
