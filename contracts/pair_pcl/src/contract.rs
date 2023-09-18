@@ -601,6 +601,10 @@ fn withdraw_liquidity(
     ]))
 }
 
+/// Performs a swap operation with the specified parameters.
+///
+/// From external perspective this function behaves in the same way as in other Astroport pairs.
+/// However, internally it forwards swap request to the Osmosis DEX module.
 fn execute_swap(
     deps: DepsMut,
     env: Env,
@@ -617,6 +621,14 @@ fn execute_swap(
         return Err(ContractError::InvalidAsset(offer_asset.info.to_string()));
     }
 
+    let (offer_ind, _) = config
+        .pair_info
+        .asset_infos
+        .iter()
+        .find_position(|asset| asset.equal(&offer_asset.info))
+        .unwrap();
+    let token_out_denom = config.pair_info.asset_infos[1 ^ offer_ind].to_string();
+
     SWAP_PARAMS.save(
         deps.storage,
         &SwapParams {
@@ -632,7 +644,8 @@ fn execute_swap(
             // If for some reason pool id was not set on instantiation any swap will fail which is totally safe.
             // Pool contract must know its pool id in Osmosis DEX module.
             pool_id: POOL_ID.load(deps.storage)?,
-            token_out_denom: "uosmo".to_string(), // TODO: Osmosis requires to pass any existing denom. However, not clear whether they assert this denom belongs to the pair or not
+            // This is not needed as we currently support only pairs. However, we define out denom just for clarity.
+            token_out_denom,
         }],
         token_in: Some(offer_asset.as_coin()?.into()),
         // We don't care about this field as all necessary parameters are passed through SWAP_PARAMS state
@@ -643,8 +656,7 @@ fn execute_swap(
         .add_message(dispatch_swap_msg))
 }
 
-/// Performs an swap operation with the specified parameters. The trader must approve the
-/// pool contract to transfer offer assets from their wallet.
+/// Performs an swap operation with the specified parameters.
 ///
 /// * **sender** is the sender of the swap operation.
 ///
