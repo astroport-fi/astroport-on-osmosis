@@ -70,7 +70,7 @@ pub fn instantiate(
         msg.asset_infos.len() == 2,
         StdError::generic_err("asset_infos must contain two elements")
     );
-    let denoms: Vec<_> = msg
+    let denoms = msg
         .asset_infos
         .iter()
         .filter_map(|asset_info| match asset_info {
@@ -86,12 +86,11 @@ pub fn instantiate(
 
     // Check that all denoms exist on chain.
     // This query requires a chain to run cosmwasm VM >= 1.1
-    denoms.iter().try_for_each(|denom| {
+    for denom in denoms {
         deps.querier
-            .query_supply(denom)
-            .map(|_| ())
-            .map_err(|_| StdError::generic_err(format!("Denom {denom} doesn't exist on chain")))
-    })?;
+            .query_supply(&denom)
+            .map_err(|_| StdError::generic_err(format!("Denom {denom} doesn't exist on chain")))?;
+    }
 
     let params: ConcentratedPoolParams = from_binary(
         &msg.init_params
