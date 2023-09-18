@@ -267,7 +267,7 @@ impl Helper {
             coin_registry_address.clone(),
             &astroport::native_coin_registry::ExecuteMsg::Add {
                 native_coins: vec![
-                    ("uluna".to_owned(), 6),
+                    ("uosmo".to_owned(), 6),
                     ("uusd".to_owned(), 6),
                     ("rc".to_owned(), 6),
                 ],
