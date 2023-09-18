@@ -1,12 +1,14 @@
-use astroport::asset::PairInfo;
+use astroport::asset::{native_asset_info, token_asset_info, PairInfo};
 use astroport::factory::PairType;
+use astroport::pair::InstantiateMsg;
+use astroport::pair_concentrated::ConcentratedPoolParams;
 use astroport_pcl_common::state::{Config, PoolState};
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-use cosmwasm_std::{Addr, Reply, StdError, SubMsgResponse, SubMsgResult};
+use cosmwasm_std::{to_binary, Addr, Reply, StdError, SubMsgResponse, SubMsgResult};
 use osmosis_std::types::osmosis::tokenfactory::v1beta1::MsgCreateDenomResponse;
 
 use astroport_on_osmosis::pair_pcl::ExecuteMsg;
-use astroport_pcl_osmo::contract::{execute, reply};
+use astroport_pcl_osmo::contract::{execute, instantiate, reply};
 use astroport_pcl_osmo::error::ContractError;
 use astroport_pcl_osmo::state::CONFIG;
 
@@ -106,4 +108,45 @@ fn test_set_pool_id() {
     )
     .unwrap_err();
     assert_eq!(err, ContractError::PoolIdAlreadySet {});
+}
+
+#[test]
+fn try_init_with_cw20() {
+    let init_msg = InstantiateMsg {
+        asset_infos: vec![
+            token_asset_info(Addr::unchecked("ASTRO")),
+            native_asset_info("uosmo".to_string()),
+        ],
+        token_code_id: 0,
+        factory_addr: FACTORY_ADDRESS.to_string(),
+        init_params: Some(
+            to_binary(&ConcentratedPoolParams {
+                amp: Default::default(),
+                gamma: Default::default(),
+                mid_fee: Default::default(),
+                out_fee: Default::default(),
+                fee_gamma: Default::default(),
+                repeg_profit_threshold: Default::default(),
+                min_price_scale_delta: Default::default(),
+                price_scale: Default::default(),
+                ma_half_time: 0,
+                track_asset_balances: None,
+            })
+            .unwrap(),
+        ),
+    };
+
+    let mut deps = mock_dependencies();
+    let err = instantiate(
+        deps.as_mut(),
+        mock_env(),
+        mock_info("sender", &[]),
+        init_msg,
+    )
+    .unwrap_err();
+
+    assert_eq!(
+        err,
+        ContractError::Std(StdError::generic_err("CW20 tokens are not supported"))
+    );
 }
