@@ -41,6 +41,8 @@ jobs:
             ~/.cargo/registry/index
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
       - run: |
           git config url."ssh://git@github.com/astroport-fi/hidden_astroport_governance.git".insteadOf "https://github.com/astroport-fi/hidden_astroport_governance"
           git config url."ssh://git@github.com/astroport-fi/hidden_astroport_core.git".insteadOf "https://github.com/astroport-fi/hidden_astroport_core"
