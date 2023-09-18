@@ -51,7 +51,7 @@ jobs:
       - name: Attach coverage report
         uses: actions/upload-artifact@v3
         with:
-          path: "$GITHUB_WORKSPACE"/tarpaulin-report.html
+          path: ${{ github.workspace }}/tarpaulin-report.html
           if-no-files-found: error
 
       - name: Upload to codecov.io
