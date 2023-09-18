@@ -45,7 +45,7 @@ fn common_pcl_params() -> ConcentratedPoolParams {
 fn check_observe_queries() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
@@ -103,7 +103,7 @@ fn check_wrong_initialization() {
 
     let params = common_pcl_params();
 
-    let err = Helper::new(&owner, vec![TestCoin::native("uluna")], params.clone()).unwrap_err();
+    let err = Helper::new(&owner, vec![TestCoin::native("uosmo")], params.clone()).unwrap_err();
 
     assert_eq!(
         err.root_cause().to_string(),
@@ -115,7 +115,7 @@ fn check_wrong_initialization() {
 
     let err = Helper::new(
         &owner,
-        vec![TestCoin::native("uluna"), TestCoin::native("uusd")],
+        vec![TestCoin::native("uosmo"), TestCoin::native("uusd")],
         wrong_params,
     )
     .unwrap_err();
@@ -134,7 +134,7 @@ fn check_wrong_initialization() {
 
     let err = Helper::new(
         &owner,
-        vec![TestCoin::native("uluna"), TestCoin::native("uusd")],
+        vec![TestCoin::native("uosmo"), TestCoin::native("uusd")],
         wrong_params,
     )
     .unwrap_err();
@@ -153,7 +153,7 @@ fn check_wrong_initialization() {
 
     let err = Helper::new(
         &owner,
-        vec![TestCoin::native("uluna"), TestCoin::native("uusd")],
+        vec![TestCoin::native("uosmo"), TestCoin::native("uusd")],
         wrong_params,
     )
     .unwrap_err();
@@ -166,7 +166,7 @@ fn check_wrong_initialization() {
     // check instantiation with valid params
     Helper::new(
         &owner,
-        vec![TestCoin::native("uluna"), TestCoin::native("uusd")],
+        vec![TestCoin::native("uosmo"), TestCoin::native("uusd")],
         params,
     )
     .unwrap();
@@ -176,8 +176,8 @@ fn check_wrong_initialization() {
 fn check_create_pair_with_unsupported_denom() {
     let owner = Addr::unchecked("owner");
 
-    let wrong_coins = vec![TestCoin::native("rc"), TestCoin::native("uluna")];
-    let valid_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+    let wrong_coins = vec![TestCoin::native("rc"), TestCoin::native("uosmo")];
+    let valid_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let params = common_pcl_params();
 
@@ -194,7 +194,7 @@ fn check_create_pair_with_unsupported_denom() {
 fn check_create_pair_with_cw20() {
     let owner = Addr::unchecked("owner");
 
-    let wrong_coins = vec![TestCoin::cw20("ASTRO"), TestCoin::native("uluna")];
+    let wrong_coins = vec![TestCoin::cw20("ASTRO"), TestCoin::native("uosmo")];
 
     let params = common_pcl_params();
 
@@ -210,7 +210,7 @@ fn check_create_pair_with_cw20() {
 fn provide_and_withdraw() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut params = common_pcl_params();
     params.price_scale = Decimal::from_ratio(2u8, 1u8);
@@ -437,7 +437,7 @@ fn provide_and_withdraw() {
 fn check_imbalanced_provide() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut params = common_pcl_params();
     params.price_scale = Decimal::from_ratio(2u8, 1u8);
@@ -613,7 +613,7 @@ fn check_imbalanced_provide() {
 fn check_reverse_swap() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
@@ -641,7 +641,7 @@ fn check_reverse_swap() {
 fn check_swaps_simple() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
@@ -735,7 +735,7 @@ fn check_swaps_with_price_update() {
     let owner = Addr::unchecked("owner");
     let half = Decimal::from_ratio(1u8, 2u8);
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
@@ -777,7 +777,7 @@ fn check_swaps_with_price_update() {
 fn provides_and_swaps() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
@@ -821,7 +821,7 @@ fn provides_and_swaps() {
 fn check_amp_gamma_change() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut params = common_pcl_params();
     params.gamma = f64_to_dec(0.0001);
@@ -908,7 +908,7 @@ fn check_amp_gamma_change() {
 fn check_prices() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
     let err = helper.query_prices().unwrap_err();
@@ -920,7 +920,7 @@ fn check_prices() {
 fn update_owner() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut helper = Helper::new(&owner, test_coins, common_pcl_params()).unwrap();
 
@@ -1033,7 +1033,7 @@ fn update_owner() {
 #[test]
 fn query_d_test() {
     let owner = Addr::unchecked("owner");
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     // create pair with test_coins
     let helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
@@ -1050,7 +1050,7 @@ fn query_d_test() {
 fn asset_balances_tracking_without_in_params() {
     let owner = Addr::unchecked("owner");
     let user1 = Addr::unchecked("user1");
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     // Instantiate pair without asset balances tracking
     let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
@@ -1124,7 +1124,7 @@ fn asset_balances_tracking_without_in_params() {
 #[test]
 fn asset_balances_tracking_with_in_params() {
     let owner = Addr::unchecked("owner");
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     // Instantiate pair without asset balances tracking
     let mut params = common_pcl_params();
@@ -1260,7 +1260,7 @@ fn asset_balances_tracking_with_in_params() {
 fn provides_and_swaps_and_withdraw() {
     let owner = Addr::unchecked("owner");
     let half = Decimal::from_ratio(1u8, 2u8);
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut params = common_pcl_params();
     params.price_scale = Decimal::from_ratio(1u8, 2u8);
@@ -1274,7 +1274,7 @@ fn provides_and_swaps_and_withdraw() {
     ];
     helper.provide_liquidity(&owner, &assets).unwrap();
 
-    // swap uluna
+    // swap uosmo
     let user = Addr::unchecked("user");
     let offer_asset = helper.assets[&test_coins[0]].with_balance(1000_000000u128);
     helper.give_me_money(&[offer_asset.clone()], &user);
@@ -1291,7 +1291,7 @@ fn provides_and_swaps_and_withdraw() {
     helper.give_me_money(&[offer_asset.clone()], &user);
     helper.swap(&user, &offer_asset, Some(half)).unwrap();
 
-    // swap uluna
+    // swap uosmo
     let offer_asset = helper.assets[&test_coins[0]].with_balance(100_000000u128);
     helper.give_me_money(&[offer_asset.clone()], &user);
     helper.swap(&user, &offer_asset, Some(half)).unwrap();
@@ -1320,7 +1320,7 @@ fn provides_and_swaps_and_withdraw() {
 fn provide_withdraw_provide() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uusd"), TestCoin::native("uluna")];
+    let test_coins = vec![TestCoin::native("uusd"), TestCoin::native("uosmo")];
 
     let params = ConcentratedPoolParams {
         amp: f64_to_dec(10f64),
@@ -1358,7 +1358,7 @@ fn provide_withdraw_provide() {
 #[test]
 fn provide_withdraw_slippage() {
     let owner = Addr::unchecked("owner");
-    let test_coins = vec![TestCoin::native("uusd"), TestCoin::native("uluna")];
+    let test_coins = vec![TestCoin::native("uusd"), TestCoin::native("uosmo")];
     let mut params = common_pcl_params();
     params.price_scale = Decimal::from_ratio(10u8, 1u8);
 
@@ -1411,7 +1411,7 @@ fn provide_withdraw_slippage() {
 fn test_frontrun_before_initial_provide() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uusd"), TestCoin::native("uluna")];
+    let test_coins = vec![TestCoin::native("uusd"), TestCoin::native("uosmo")];
 
     let params = ConcentratedPoolParams {
         amp: f64_to_dec(10f64),
@@ -1490,7 +1490,7 @@ fn test_frontrun_before_initial_provide() {
 fn test_osmosis_specific_queries() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
