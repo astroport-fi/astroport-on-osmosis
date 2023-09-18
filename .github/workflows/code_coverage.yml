@@ -46,8 +46,7 @@ jobs:
         uses: actions-rs/tarpaulin@v0.1
         with:
           version: '0.22.0'
-          args: '--exclude-files *tests*.rs target*.rs -e astroport-osmo-e2e-tests --workspace'
-          out-type: Xml Html
+          args: '--exclude-files *tests*.rs target*.rs -e astroport-osmo-e2e-tests --workspace -o Html'
 
       - name: Attach coverage report
         uses: actions/upload-artifact@v3
