@@ -274,6 +274,7 @@ impl Helper {
                     ("uosmo".to_owned(), 6),
                     ("uusd".to_owned(), 6),
                     ("rc".to_owned(), 6),
+                    ("foo".to_owned(), 5),
                 ],
             },
             &[],
