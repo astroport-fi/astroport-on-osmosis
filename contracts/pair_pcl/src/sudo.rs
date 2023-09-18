@@ -78,6 +78,13 @@ fn swap_exact_amount_out(
     token_in_max_amount: Uint128,
     token_out: Coin,
 ) -> Result<Response, ContractError> {
+    if &token_in_denom == &token_out.denom {
+        return Err(StdError::generic_err(format!(
+            "Invalid swap: {token_in_denom} to {token_in_denom}"
+        ))
+        .into());
+    }
+
     let mut config = CONFIG.load(deps.storage)?;
     let precisions = Precisions::new(deps.storage)?;
     let ask_asset = native_asset_info(token_out.denom).with_balance(token_out.amount);
@@ -116,7 +123,7 @@ fn swap_exact_amount_out(
     ensure!(
         offer_asset.amount <= token_in_max_amount,
         StdError::generic_err(
-            format!("Not enough tokens to perform swap. Need {ask_asset} but token_in_max_amount is {token_in_max_amount}")
+            format!("Not enough tokens to perform swap. Need {} but token_in_max_amount is {token_in_max_amount}", offer_asset.amount)
         )
     );
 

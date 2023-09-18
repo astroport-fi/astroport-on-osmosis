@@ -8,8 +8,8 @@ use astroport_on_osmosis::pair_pcl::{GetSwapFeeResponse, QueryMsg};
 use cosmwasm_schema::schemars::JsonSchema;
 use cosmwasm_schema::serde::de::DeserializeOwned;
 use cosmwasm_std::{
-    coin, coins, from_binary, to_binary, Addr, Api, Binary, BlockInfo, CustomQuery, Empty, Querier,
-    QueryRequest, Storage, SubMsgResponse, WasmMsg, WasmQuery,
+    coin, coins, from_binary, to_binary, Addr, Api, BankMsg, Binary, BlockInfo, CustomQuery, Empty,
+    Querier, QueryRequest, Storage, SubMsgResponse, WasmMsg, WasmQuery,
 };
 use cw_multi_test::{
     AppResponse, BankSudo, CosmosRouter, Module, Stargate, StargateMsg, StargateQuery, WasmSudo,
@@ -18,7 +18,9 @@ use osmosis_std::types::osmosis::cosmwasmpool::v1beta1::{
     ContractInfoByPoolIdRequest, ContractInfoByPoolIdResponse, MsgCreateCosmWasmPool,
     MsgCreateCosmWasmPoolResponse,
 };
-use osmosis_std::types::osmosis::poolmanager::v1beta1::MsgSwapExactAmountIn;
+use osmosis_std::types::osmosis::poolmanager::v1beta1::{
+    MsgSwapExactAmountIn, MsgSwapExactAmountOut,
+};
 use osmosis_std::types::osmosis::tokenfactory::v1beta1::{
     MsgBurn, MsgCreateDenom, MsgCreateDenomResponse, MsgMint,
 };
@@ -156,6 +158,52 @@ impl Module for OsmosisStargate {
                     token_out_min_amount: pm_msg.token_out_min_amount.parse()?,
                     swap_fee: from_binary::<GetSwapFeeResponse>(&res)?.swap_fee,
                 };
+
+                let wasm_sudo_msg = WasmSudo::new(&contract_addr, &inner_contract_msg)?;
+                router.sudo(api, storage, block, wasm_sudo_msg.into())
+            }
+            MsgSwapExactAmountOut::TYPE_URL => {
+                let pm_msg: MsgSwapExactAmountOut = msg.value.try_into()?;
+                let token_out = pm_msg.token_out.expect("token_out must be set!");
+
+                let contract_addr =
+                    Addr::unchecked(&self.cw_pools.borrow()[&pm_msg.routes[0].pool_id]);
+
+                // Osmosis always performs this query before calling a contract.
+                let res = router
+                    .query(
+                        api,
+                        storage,
+                        block,
+                        QueryRequest::Wasm(WasmQuery::Smart {
+                            contract_addr: contract_addr.to_string(),
+                            msg: to_binary(&QueryMsg::GetSwapFee {}).unwrap(),
+                        }),
+                    )
+                    .unwrap();
+
+                let inner_contract_msg = pair_pcl::SudoMessage::SwapExactAmountOut {
+                    sender: pm_msg.sender.clone(),
+                    token_in_denom: pm_msg.routes[0].token_in_denom.clone(),
+                    token_in_max_amount: pm_msg.token_in_max_amount.parse()?,
+                    token_out: coin(token_out.amount.parse()?, token_out.denom),
+                    swap_fee: from_binary::<GetSwapFeeResponse>(&res)?.swap_fee,
+                };
+
+                router.execute(
+                    api,
+                    storage,
+                    block,
+                    Addr::unchecked(pm_msg.sender),
+                    BankMsg::Send {
+                        to_address: contract_addr.to_string(),
+                        amount: coins(
+                            pm_msg.token_in_max_amount.parse()?,
+                            pm_msg.routes[0].token_in_denom.clone(),
+                        ),
+                    }
+                    .into(),
+                )?;
 
                 let wasm_sudo_msg = WasmSudo::new(&contract_addr, &inner_contract_msg)?;
                 router.sudo(api, storage, block, wasm_sudo_msg.into())

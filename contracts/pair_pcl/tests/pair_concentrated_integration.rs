@@ -14,7 +14,7 @@ use astroport::pair_concentrated::{
 use astroport_pcl_common::consts::{AMP_MAX, AMP_MIN, MA_HALF_TIME_LIMITS};
 use astroport_pcl_common::error::PclError;
 use cosmwasm_std::{Addr, Decimal, Fraction, StdError, Uint128};
-use cw_multi_test::Executor;
+use cw_multi_test::{next_block, Executor};
 use itertools::Itertools;
 
 use astroport_on_osmosis::pair_pcl::{
@@ -1603,5 +1603,88 @@ fn test_osmosis_specific_queries() {
             quote = helper.assets[&test_coins[1]].to_string(),
             base = helper.assets[&test_coins[0]].to_string()
         ))
+    );
+}
+
+#[test]
+fn check_reverse_swaps() {
+    let owner = Addr::unchecked("owner");
+
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
+
+    let params = ConcentratedPoolParams {
+        track_asset_balances: Some(true),
+        ..common_pcl_params()
+    };
+    let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
+
+    let provide_assets = [
+        helper.assets[&test_coins[0]].with_balance(100_000_000000u128),
+        helper.assets[&test_coins[1]].with_balance(100_000_000000u128),
+    ];
+    helper.provide_liquidity(&owner, &provide_assets).unwrap();
+
+    let user = Addr::unchecked("user");
+    let offer_asset = helper.assets[&test_coins[0]].with_balance(100_000000u128);
+    helper.give_me_money(&[offer_asset.clone()], &user);
+
+    // exchange rate is not 1:1 thus pool is not able to perform such reverse swap
+    let ask_asset = helper.assets[&test_coins[1]].with_balance(100_000000u128);
+    let err = helper
+        .reverse_swap(&user, &ask_asset, &offer_asset)
+        .unwrap_err();
+    assert_eq!(err.root_cause().to_string(), "Generic error: Not enough tokens to perform swap. Need 100453296 but token_in_max_amount is 100000000");
+
+    // check the user still holds their uosmo token and didn't receive uusd
+    assert_eq!(helper.coin_balance(&test_coins[0], &user), 100_000000);
+    assert_eq!(helper.coin_balance(&test_coins[1], &user), 0);
+
+    // Ask slightly less uusd
+    let ask_asset = helper.assets[&test_coins[1]].with_balance(95_000000u128);
+    helper
+        .reverse_swap(&user, &ask_asset, &offer_asset)
+        .unwrap();
+
+    // check balances. User received slightly more uusd than expected cuz PCL has dynamic fee
+    // and it can't forecast exact fee rate in reverse swaps
+    assert_eq!(helper.coin_balance(&test_coins[0], &user), 4_569430);
+    assert_eq!(helper.coin_balance(&test_coins[1], &user), 95_180600);
+
+    helper.app.update_block(next_block);
+
+    // Check that asset balance is being tracked
+    let res = helper
+        .query_asset_balance_at(
+            &helper.assets[&test_coins[0]],
+            helper.app.block_info().height,
+        )
+        .unwrap();
+    assert_eq!(res.unwrap().u128(), 100095_430570);
+
+    // make reverse swap in opposite direction
+    let user2 = Addr::unchecked("user2");
+    let offer_asset = helper.assets[&test_coins[1]].with_balance(100_000000u128);
+    helper.give_me_money(&[offer_asset.clone()], &user2);
+    let ask_asset = helper.assets[&test_coins[0]].with_balance(95_000000u128);
+    helper
+        .reverse_swap(&user2, &ask_asset, &offer_asset)
+        .unwrap();
+    assert_eq!(helper.coin_balance(&test_coins[0], &user), 4_569430);
+    assert_eq!(helper.coin_balance(&test_coins[1], &user), 95_180600);
+
+    // try to abuse reverse swap and use equal offer and ask assets
+    let user3 = Addr::unchecked("user3");
+    let offer_asset = helper.assets[&test_coins[1]].with_balance(100_000000u128);
+    helper.give_me_money(&[offer_asset.clone()], &user3);
+    let ask_asset = helper.assets[&test_coins[1]].with_balance(95_000000u128);
+    let err = helper
+        .reverse_swap(&user3, &ask_asset, &offer_asset)
+        .unwrap_err();
+    assert_eq!(
+        err.root_cause().to_string(),
+        format!(
+            "Generic error: Invalid swap: {0} to {0}",
+            offer_asset.info.to_string()
+        )
     );
 }

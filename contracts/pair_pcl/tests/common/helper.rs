@@ -32,10 +32,14 @@ use cw_multi_test::{
 use cw_storage_plus::Item;
 use derivative::Derivative;
 use itertools::Itertools;
+use osmosis_std::types::osmosis::poolmanager::v1beta1::{
+    MsgSwapExactAmountOut, SwapAmountOutRoute,
+};
 
 use astroport_on_osmosis::pair_pcl::ExecuteMsg;
 use astroport_pcl_osmo::contract::{execute, instantiate, reply};
 use astroport_pcl_osmo::queries::query;
+use astroport_pcl_osmo::state::POOL_ID;
 use astroport_pcl_osmo::sudo::sudo;
 
 use crate::common::osmosis_ext::OsmosisStargate;
@@ -448,6 +452,29 @@ impl Helper {
                 ask_asset_info,
             },
         )
+    }
+
+    pub fn reverse_swap(
+        &mut self,
+        sender: &Addr,
+        ask_asset: &Asset,
+        max_offer_asset: &Asset,
+    ) -> AnyResult<AppResponse> {
+        let max_offer_coin = max_offer_asset.as_coin().unwrap();
+        let pool_id = POOL_ID
+            .query(&mut self.app.wrap(), self.pair_addr.clone())
+            .unwrap();
+        let msg = MsgSwapExactAmountOut {
+            sender: sender.to_string(),
+            token_out: Some(ask_asset.as_coin().unwrap().into()),
+            token_in_max_amount: max_offer_coin.amount.to_string(),
+            routes: vec![SwapAmountOutRoute {
+                pool_id,
+                token_in_denom: max_offer_coin.denom,
+            }],
+        };
+
+        self.app.execute(sender.clone(), msg.into())
     }
 
     pub fn simulate_reverse_swap(
