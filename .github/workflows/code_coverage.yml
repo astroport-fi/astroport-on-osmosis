@@ -47,6 +47,7 @@ jobs:
         with:
           version: '0.22.0'
           args: '--exclude-files *tests*.rs target*.rs -e astroport-osmo-e2e-tests --workspace'
+          out-type: Xml Html
 
       - name: Attach coverage report
         uses: actions/upload-artifact@v3
