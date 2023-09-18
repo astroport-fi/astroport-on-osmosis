@@ -48,7 +48,8 @@ jobs:
           version: '0.22.0'
           args: '--exclude-files *tests*.rs target*.rs -e astroport-osmo-e2e-tests --workspace'
 
-      - uses: actions/upload-artifact@v3
+      - name: Attach coverage report
+        uses: actions/upload-artifact@v3
         with:
           path: "$GITHUB_WORKSPACE"/tarpaulin-report.html
           if-no-files-found: error
