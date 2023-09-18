@@ -64,7 +64,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-fail-fast --locked
+          args: --no-fail-fast --locked -- --test-threads 1 # disable parallelism due to issue with test-tube that cause flaky tests
         env:
           RUST_BACKTRACE: 1
 
