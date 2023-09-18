@@ -191,6 +191,22 @@ fn check_create_pair_with_unsupported_denom() {
 }
 
 #[test]
+fn check_create_pair_with_cw20() {
+    let owner = Addr::unchecked("owner");
+
+    let wrong_coins = vec![TestCoin::cw20("ASTRO"), TestCoin::native("uluna")];
+
+    let params = common_pcl_params();
+
+    let err = Helper::new(&owner, wrong_coins.clone(), params.clone()).unwrap_err();
+    assert_eq!(
+        err.downcast::<astroport_factory::error::ContractError>()
+            .unwrap(),
+        astroport_factory::error::ContractError::NonNativeToken {}
+    );
+}
+
+#[test]
 fn provide_and_withdraw() {
     let owner = Addr::unchecked("owner");
 
