@@ -152,6 +152,7 @@ fn swap_exact_amount_out(
         &config,
         &env,
         maker_fee_share,
+        Decimal256::zero(),
     )?;
     xs[offer_ind] += offer_asset_dec.amount;
     xs[ask_ind] -= swap_result.dy + swap_result.maker_fee;

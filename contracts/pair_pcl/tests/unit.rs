@@ -36,6 +36,7 @@ fn test_replies() {
         },
         owner: None,
         track_asset_balances: false,
+        fee_share: None,
     };
     CONFIG.save(deps.as_mut().storage, &config).unwrap();
 
@@ -131,6 +132,7 @@ fn try_init_with_cw20() {
                 price_scale: Default::default(),
                 ma_half_time: 0,
                 track_asset_balances: None,
+                fee_share: None,
             })
             .unwrap(),
         ),

@@ -23,6 +23,7 @@ fn default_pcl_params() -> ConcentratedPoolParams {
         price_scale: Decimal::from_ratio(1u8, 2u8),
         ma_half_time: 600,
         track_asset_balances: None,
+        fee_share: None,
     }
 }
 
