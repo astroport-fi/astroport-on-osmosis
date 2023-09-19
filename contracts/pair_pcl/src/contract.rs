@@ -152,6 +152,7 @@ pub fn instantiate(
         pool_state,
         owner: None,
         track_asset_balances: params.track_asset_balances.unwrap_or_default(),
+        fee_share: None,
     };
 
     if config.track_asset_balances {
@@ -715,6 +716,7 @@ pub(crate) fn internal_swap(
         &config,
         &env,
         maker_fee_share,
+        Decimal256::zero(),
     )?;
     xs[offer_ind] += offer_asset_dec.amount;
     xs[ask_ind] -= swap_result.dy + swap_result.maker_fee;
@@ -858,6 +860,8 @@ fn update_config(
 
             "enable_asset_balances_tracking"
         }
+        ConcentratedPoolUpdateParams::EnableFeeShare { .. } => todo!(),
+        ConcentratedPoolUpdateParams::DisableFeeShare => todo!(),
     };
     CONFIG.save(deps.storage, &config)?;
 

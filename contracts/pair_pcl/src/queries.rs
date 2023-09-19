@@ -247,6 +247,7 @@ pub fn query_simulation(
         &config,
         &env,
         maker_fee_share,
+        Decimal256::zero(),
     )?;
 
     let return_amount = swap_result.dy.to_uint(ask_asset_prec)?;
@@ -345,6 +346,7 @@ pub fn query_config(deps: Deps, env: Env) -> StdResult<ConfigResponse> {
             price_scale,
             ma_half_time: config.pool_params.ma_half_time,
             track_asset_balances: config.track_asset_balances,
+            fee_share: None,
         })?),
         owner: config.owner.unwrap_or(factory_config.owner),
         factory_addr: config.factory_addr,
