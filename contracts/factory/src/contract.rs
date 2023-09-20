@@ -266,7 +266,7 @@ pub fn execute_create_pair(
 ) -> Result<Response, ContractError> {
     // TODO: agreed with Osmosis that they will expose stargate query so we won't need to pin consts in the code
     // Osmosis has 1000 OSMO flat fee to create a pool.
-    // We don't need to pass fees because Osmosis handles it internally and charges factory's balance
+    // We don't need to send fees with MsgCreateCosmWasmPool because Osmosis handles it internally and charges factory's balance, however, the creator of the pool needs to pay this fee when creating the pool
     let amount = must_pay(&info, CREATE_FEE_DENOM)?;
     ensure!(
         amount.u128() == CREATE_FEE,
