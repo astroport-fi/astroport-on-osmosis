@@ -51,8 +51,9 @@ jobs:
         with:
           profile: minimal
           toolchain: 1.68.0
+          override: true
           target: wasm32-unknown-unknown
-          components: rustfmt, clippy
+          components: rustfmt, clippy, llvm-tools-preview
 
       - name: Run tests
         uses: actions-rs/cargo@v1
