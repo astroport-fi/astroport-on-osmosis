@@ -29,6 +29,7 @@ jobs:
             ${{ secrets.CORE_PRIVATE_KEY }}
 
       - uses: actions/cache@v3
+        if: always()
         with:
           path: |
             ~/.cargo/bin
@@ -51,7 +52,6 @@ jobs:
           profile: minimal
           toolchain: 1.68.0
           target: wasm32-unknown-unknown
-          override: true
           components: rustfmt, clippy
 
       - name: Run tests
