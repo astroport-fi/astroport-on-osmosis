@@ -61,7 +61,7 @@ dependencies = [
 [[package]]
 name = "astroport"
 version = "3.6.0"
-source = "git+https://github.com/astroport-fi/hidden_astroport_core?branch=feat/separate_pcl_crate#9666faf11e65e91dca8a327c96cdac2b13ec1f67"
+source = "git+https://github.com/astroport-fi/hidden_astroport_core#f57b03700dc57e2a9d36724548c5e99a4a8ef2f7"
 dependencies = [
  "astroport-circular-buffer",
  "cosmwasm-schema",
@@ -77,7 +77,7 @@ dependencies = [
 [[package]]
 name = "astroport-circular-buffer"
 version = "0.1.0"
-source = "git+https://github.com/astroport-fi/hidden_astroport_core?branch=feat/separate_pcl_crate#9666faf11e65e91dca8a327c96cdac2b13ec1f67"
+source = "git+https://github.com/astroport-fi/hidden_astroport_core#f57b03700dc57e2a9d36724548c5e99a4a8ef2f7"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -88,7 +88,7 @@ dependencies = [
 [[package]]
 name = "astroport-factory"
 version = "1.6.0"
-source = "git+https://github.com/astroport-fi/hidden_astroport_core?branch=feat/separate_pcl_crate#9666faf11e65e91dca8a327c96cdac2b13ec1f67"
+source = "git+https://github.com/astroport-fi/hidden_astroport_core#f57b03700dc57e2a9d36724548c5e99a4a8ef2f7"
 dependencies = [
  "astroport 3.6.0",
  "cosmwasm-schema",
@@ -163,7 +163,7 @@ dependencies = [
 [[package]]
 name = "astroport-pcl-common"
 version = "1.0.0"
-source = "git+https://github.com/astroport-fi/hidden_astroport_core?branch=feat/separate_pcl_crate#9666faf11e65e91dca8a327c96cdac2b13ec1f67"
+source = "git+https://github.com/astroport-fi/hidden_astroport_core#f57b03700dc57e2a9d36724548c5e99a4a8ef2f7"
 dependencies = [
  "astroport 3.6.0",
  "astroport-factory",
