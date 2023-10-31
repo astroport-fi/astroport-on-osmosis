@@ -1,3 +1,5 @@
+use std::num::ParseIntError;
+
 use cosmwasm_std::StdError;
 use cw_utils::PaymentError;
 use thiserror::Error;
@@ -10,6 +12,9 @@ pub enum ContractError {
 
     #[error("{0}")]
     PaymentError(#[from] PaymentError),
+
+    #[error("{0}")]
+    ParseIntError(#[from] ParseIntError),
 
     #[error("Unauthorized")]
     Unauthorized {},

@@ -262,7 +262,7 @@ fn update_owner() {
 
 #[test]
 fn update_pair_config() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_dependencies_with_custom_querier(MockedStargateQuerier::new());
     let owner = "owner0000";
     let pair_configs = vec![PairConfig {
         code_id: 123u64,
@@ -408,7 +408,7 @@ fn update_pair_config() {
 
 #[test]
 fn create_pair() {
-    let mut deps = mock_dependencies();
+    let mut deps = mock_dependencies_with_custom_querier(MockedStargateQuerier::new());
 
     let pair_config = PairConfig {
         code_id: 321,
@@ -470,7 +470,7 @@ fn create_pair() {
     assert_eq!(
         res,
         ContractError::Std(StdError::generic_err(
-            "Incorrect funds sent. Pool initialization costs 1000000000uosmo"
+            "Not enough funds to create a pool. Check pool_creation_fee in poolmanager params."
         ))
     );
 

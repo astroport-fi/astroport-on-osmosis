@@ -22,3 +22,4 @@ strip = true
 astroport = { git = "https://github.com/astroport-fi/hidden_astroport_core", version = "3" }
 astroport-pcl-common = { git = "https://github.com/astroport-fi/hidden_astroport_core", version = "1" }
 astroport-circular-buffer = { git = "https://github.com/astroport-fi/hidden_astroport_core", version = "0.1" }
+osmosis-std = "0.20.1"
