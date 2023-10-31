@@ -1,6 +1,7 @@
 use astroport::asset::{native_asset_info, AssetInfoExt};
 use astroport::cosmwasm_ext::{DecimalToInteger, IntegerToDecimal};
-use astroport::observation::{PrecommitObservation, MIN_TRADE_SIZE};
+use astroport::observation::PrecommitObservation;
+use astroport::pair::MIN_TRADE_SIZE;
 use astroport::querier::query_fee_info;
 use astroport_pcl_common::state::Precisions;
 use astroport_pcl_common::utils::{assert_max_spread, compute_offer_amount, compute_swap};

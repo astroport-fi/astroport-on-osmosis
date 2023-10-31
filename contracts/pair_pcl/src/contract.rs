@@ -8,8 +8,8 @@ use astroport::asset::{validate_native_denom, AssetInfoExt};
 use astroport::common::{claim_ownership, drop_ownership_proposal, propose_new_owner};
 use astroport::cosmwasm_ext::{AbsDiff, DecimalToInteger, IntegerToDecimal};
 use astroport::factory::PairType;
-use astroport::observation::{PrecommitObservation, MIN_TRADE_SIZE, OBSERVATIONS_SIZE};
-use astroport::pair::InstantiateMsg;
+use astroport::observation::{PrecommitObservation, OBSERVATIONS_SIZE};
+use astroport::pair::{InstantiateMsg, MIN_TRADE_SIZE};
 use astroport::pair_concentrated::{
     ConcentratedPoolParams, ConcentratedPoolUpdateParams, UpdatePoolParams,
 };
