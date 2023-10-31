@@ -22,7 +22,7 @@ use astroport_pcl_common::state::Config;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::testing::MockApi;
 use cosmwasm_std::{
-    coin, coins, from_slice, to_binary, Addr, Coin, Decimal, Decimal256, Empty, GovMsg, IbcMsg,
+    coin, coins, from_json, to_json_binary, Addr, Coin, Decimal, Decimal256, Empty, GovMsg, IbcMsg,
     IbcQuery, MemoryStorage, StdError, StdResult, Storage, Uint128,
 };
 use cw_multi_test::{
@@ -318,7 +318,7 @@ impl Helper {
         let init_pair_msg = astroport::factory::ExecuteMsg::CreatePair {
             pair_type,
             asset_infos: asset_infos.clone(),
-            init_params: Some(to_binary(&params).unwrap()),
+            init_params: Some(to_json_binary(&params).unwrap()),
         };
 
         app.execute_contract(
@@ -407,7 +407,7 @@ impl Helper {
                 let msg = token::ExecuteMsg::Send {
                     contract: self.pair_addr.to_string(),
                     amount: offer_asset.amount,
-                    msg: to_binary(&Cw20HookMsg::Swap {
+                    msg: to_json_binary(&Cw20HookMsg::Swap {
                         ask_asset_info: None,
                         belief_price,
                         max_spread,
@@ -575,7 +575,7 @@ impl Helper {
             .wrap()
             .query_wasm_raw(&self.pair_addr, b"config")?
             .ok_or_else(|| StdError::generic_err("Failed to find config in storage"))?;
-        from_slice(&binary)
+        from_json(&binary)
     }
 
     pub fn query_lp_price(&self) -> StdResult<Decimal256> {
@@ -607,7 +607,7 @@ impl Helper {
             user.clone(),
             self.pair_addr.clone(),
             &ExecuteMsg::UpdateConfig {
-                params: to_binary(action).unwrap(),
+                params: to_json_binary(action).unwrap(),
             },
             &[],
         )
@@ -618,7 +618,7 @@ impl Helper {
             .app
             .wrap()
             .query_wasm_smart(&self.pair_addr, &QueryMsg::Config {})?;
-        let params: ConcentratedPoolParams = from_slice(
+        let params: ConcentratedPoolParams = from_json(
             &config_resp
                 .params
                 .ok_or_else(|| StdError::generic_err("Params not found in config response!"))?,

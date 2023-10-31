@@ -14,7 +14,7 @@ use astroport_pcl_common::{calc_d, get_xcp};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Decimal, Decimal256, Deps, Env, Fraction, StdError, StdResult, Uint128,
+    to_json_binary, Binary, Decimal, Decimal256, Deps, Env, Fraction, StdError, StdResult, Uint128,
     Uint64,
 };
 use itertools::Itertools;
@@ -55,34 +55,34 @@ use crate::utils::{pool_info, query_native_supply, query_pools};
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Pair {} => to_binary(&CONFIG.load(deps.storage)?.pair_info),
-        QueryMsg::Pool {} => to_binary(&query_pool(deps)?),
-        QueryMsg::Share { amount } => to_binary(
+        QueryMsg::Pair {} => to_json_binary(&CONFIG.load(deps.storage)?.pair_info),
+        QueryMsg::Pool {} => to_json_binary(&query_pool(deps)?),
+        QueryMsg::Share { amount } => to_json_binary(
             &query_share(deps, amount).map_err(|err| StdError::generic_err(err.to_string()))?,
         ),
         QueryMsg::Simulation { offer_asset, .. } => {
             let (sim_result, _) = query_simulation(deps, env, offer_asset)
                 .map_err(|err| StdError::generic_err(format!("{err}")))?;
-            to_binary(&sim_result)
+            to_json_binary(&sim_result)
         }
         QueryMsg::ReverseSimulation { ask_asset, .. } => {
             let (sim_result, _) = query_reverse_simulation(deps, env, ask_asset)
                 .map_err(|err| StdError::generic_err(format!("{err}")))?;
-            to_binary(&sim_result)
+            to_json_binary(&sim_result)
         }
         QueryMsg::CumulativePrices {} => Err(StdError::generic_err(
             stringify!(Not implemented. Use {"observe": {"seconds_ago": ... }} instead.),
         )),
         QueryMsg::Observe { seconds_ago } => {
-            to_binary(&query_observation(deps, env, OBSERVATIONS, seconds_ago)?)
+            to_json_binary(&query_observation(deps, env, OBSERVATIONS, seconds_ago)?)
         }
-        QueryMsg::Config {} => to_binary(&query_config(deps, env)?),
-        QueryMsg::LpPrice {} => to_binary(&query_lp_price(deps, env)?),
-        QueryMsg::ComputeD {} => to_binary(&query_compute_d(deps, env)?),
+        QueryMsg::Config {} => to_json_binary(&query_config(deps, env)?),
+        QueryMsg::LpPrice {} => to_json_binary(&query_lp_price(deps, env)?),
+        QueryMsg::ComputeD {} => to_json_binary(&query_compute_d(deps, env)?),
         QueryMsg::AssetBalanceAt {
             asset_info,
             block_height,
-        } => to_binary(&query_asset_balances_at(deps, asset_info, block_height)?),
+        } => to_json_binary(&query_asset_balances_at(deps, asset_info, block_height)?),
 
         //
         // OSMOSIS SPECIFIC QUERY ENDPOINTS
@@ -95,7 +95,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 .iter()
                 .map(Asset::as_coin)
                 .collect::<StdResult<_>>()?;
-            to_binary(&TotalPoolLiquidityResponse {
+            to_json_binary(&TotalPoolLiquidityResponse {
                 total_pool_liquidity,
             })
         }
@@ -104,7 +104,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
             let (_, return_asset) = query_simulation(deps, env, offer_asset)
                 .map_err(|err| StdError::generic_err(format!("{err}")))?;
 
-            to_binary(&CalcOutAmtGivenInResponse {
+            to_json_binary(&CalcOutAmtGivenInResponse {
                 token_out: return_asset.as_coin()?,
             })
         }
@@ -113,7 +113,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
             let (_, offer_asset) = query_reverse_simulation(deps, env, ask_asset)
                 .map_err(|err| StdError::generic_err(format!("{err}")))?;
 
-            to_binary(&CalcInAmtGivenOutResponse {
+            to_json_binary(&CalcInAmtGivenOutResponse {
                 token_in: offer_asset.as_coin()?,
             })
         }
@@ -148,14 +148,14 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 )))
             }?;
 
-            to_binary(&SpotPriceResponse { spot_price })
+            to_json_binary(&SpotPriceResponse { spot_price })
         }
         // Osmosis confirmed we can safely set 0% here.
         // Osmosis team: it was needed due to Osmosis legacy multi hop osmo swap fee reduction where
         // it needs swap fee to pass into the swap interface.
-        QueryMsg::GetSwapFee {} => to_binary(&GetSwapFeeResponse::default()),
+        QueryMsg::GetSwapFee {} => to_json_binary(&GetSwapFeeResponse::default()),
         // TODO: there is no clear documentation how does it work
-        QueryMsg::IsActive {} => to_binary(&IsActiveResponse { is_active: true }),
+        QueryMsg::IsActive {} => to_json_binary(&IsActiveResponse { is_active: true }),
     }
 }
 
@@ -335,7 +335,7 @@ pub fn query_config(deps: Deps, env: Env) -> StdResult<ConfigResponse> {
 
     Ok(ConfigResponse {
         block_time_last: 0, // keeping this field for backwards compatibility
-        params: Some(to_binary(&ConcentratedPoolConfig {
+        params: Some(to_json_binary(&ConcentratedPoolConfig {
             amp: amp_gamma.amp,
             gamma: amp_gamma.gamma,
             mid_fee: config.pool_params.mid_fee,

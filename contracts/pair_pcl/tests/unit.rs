@@ -4,7 +4,7 @@ use astroport::pair::InstantiateMsg;
 use astroport::pair_concentrated::ConcentratedPoolParams;
 use astroport_pcl_common::state::{Config, PoolState};
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-use cosmwasm_std::{to_binary, Addr, Reply, StdError, SubMsgResponse, SubMsgResult};
+use cosmwasm_std::{to_json_binary, Addr, Reply, StdError, SubMsgResponse, SubMsgResult};
 use osmosis_std::types::osmosis::tokenfactory::v1beta1::MsgCreateDenomResponse;
 
 use astroport_on_osmosis::pair_pcl::ExecuteMsg;
@@ -121,7 +121,7 @@ fn try_init_with_cw20() {
         token_code_id: 0,
         factory_addr: FACTORY_ADDRESS.to_string(),
         init_params: Some(
-            to_binary(&ConcentratedPoolParams {
+            to_json_binary(&ConcentratedPoolParams {
                 amp: Default::default(),
                 gamma: Default::default(),
                 mid_fee: Default::default(),

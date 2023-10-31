@@ -26,7 +26,7 @@ use astroport_pcl_common::{calc_d, get_xcp};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, coin, ensure, from_binary, to_binary, Addr, Binary, Decimal, Decimal256, DepsMut, Env,
+    attr, coin, ensure, from_json, to_json_binary, Addr, Binary, Decimal, Decimal256, DepsMut, Env,
     MessageInfo, Reply, Response, StdError, StdResult, SubMsg, Uint128,
 };
 use cw2::set_contract_version;
@@ -92,7 +92,7 @@ pub fn instantiate(
             .map_err(|_| StdError::generic_err(format!("Denom {denom} doesn't exist on chain")))?;
     }
 
-    let params: ConcentratedPoolParams = from_binary(
+    let params: ConcentratedPoolParams = from_json(
         &msg.init_params
             .ok_or(ContractError::InitParamsNotFound {})?,
     )?;
@@ -184,7 +184,7 @@ pub fn instantiate(
                 "disabled"
             },
         ))
-    // TODO: .set_data(to_binary(&AfterPoolCreated {create_pool_guages: None})?)
+    // TODO: .set_data(to_json_binary(&AfterPoolCreated {create_pool_guages: None})?)
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -790,7 +790,7 @@ pub(crate) fn internal_swap(
         )?;
     }
 
-    let response_data = to_binary(&SwapExactAmountInResponseData {
+    let response_data = to_json_binary(&SwapExactAmountInResponseData {
         token_out_amount: return_amount,
     })?;
 
@@ -831,7 +831,7 @@ fn update_config(
         return Err(ContractError::Unauthorized {});
     }
 
-    let action = match from_binary::<ConcentratedPoolUpdateParams>(&params)? {
+    let action = match from_json::<ConcentratedPoolUpdateParams>(&params)? {
         ConcentratedPoolUpdateParams::Update(update_params) => {
             config.pool_params.update_params(update_params)?;
             "update_params"

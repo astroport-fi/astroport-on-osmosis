@@ -6,7 +6,7 @@ use astroport::factory::{
 use astroport::{factory, pair};
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR};
 use cosmwasm_std::{
-    attr, coins, from_binary, to_binary, Addr, Empty, Reply, ReplyOn, StdError, SubMsg,
+    attr, coins, from_json, to_json_binary, Addr, Empty, Reply, ReplyOn, StdError, SubMsg,
     SubMsgResponse, SubMsgResult,
 };
 use cw_utils::PaymentError::NoFunds;
@@ -105,7 +105,7 @@ fn test_init() {
     instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap();
 
     let query_res = query(deps.as_ref(), mock_env(), factory::QueryMsg::Config {}).unwrap();
-    let config_res: ConfigResponse = from_binary(&query_res).unwrap();
+    let config_res: ConfigResponse = from_json(&query_res).unwrap();
     assert_eq!(0, config_res.token_code_id);
     assert_eq!(msg.pair_configs, config_res.pair_configs);
     assert_eq!("owner", config_res.owner.as_str());
@@ -155,7 +155,7 @@ fn update_config() {
     assert_eq!(0, res.messages.len());
 
     let query_res = query(deps.as_ref(), env, QueryMsg::Config {}).unwrap();
-    let config_res: ConfigResponse = from_binary(&query_res).unwrap();
+    let config_res: ConfigResponse = from_json(&query_res).unwrap();
     assert_eq!(owner, config_res.owner);
     assert_eq!(
         String::from("new_fee_addr"),
@@ -256,7 +256,7 @@ fn update_owner() {
 
     // Let's query the state
     let config: ConfigResponse =
-        from_binary(&query(deps.as_ref(), env.clone(), QueryMsg::Config {}).unwrap()).unwrap();
+        from_json(&query(deps.as_ref(), env.clone(), QueryMsg::Config {}).unwrap()).unwrap();
     assert_eq!(new_owner, config.owner);
 }
 
@@ -291,7 +291,7 @@ fn update_pair_config() {
 
     // It worked, let's query the state
     let query_res = query(deps.as_ref(), env.clone(), QueryMsg::Config {}).unwrap();
-    let config_res: ConfigResponse = from_binary(&query_res).unwrap();
+    let config_res: ConfigResponse = from_json(&query_res).unwrap();
     assert_eq!(pair_configs, config_res.pair_configs);
 
     // Update config
@@ -341,7 +341,7 @@ fn update_pair_config() {
 
     // It worked, let's query the state
     let query_res = query(deps.as_ref(), env.clone(), QueryMsg::Config {}).unwrap();
-    let config_res: ConfigResponse = from_binary(&query_res).unwrap();
+    let config_res: ConfigResponse = from_json(&query_res).unwrap();
     assert_eq!(vec![pair_config.clone()], config_res.pair_configs);
 
     // Add second config
@@ -362,7 +362,7 @@ fn update_pair_config() {
     execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
     let query_res = query(deps.as_ref(), env.clone(), QueryMsg::Config {}).unwrap();
-    let config_res: ConfigResponse = from_binary(&query_res).unwrap();
+    let config_res: ConfigResponse = from_json(&query_res).unwrap();
     assert_eq!(
         vec![pair_config_custom.clone(), pair_config.clone()],
         config_res.pair_configs
@@ -511,7 +511,7 @@ fn create_pair() {
         vec![SubMsg {
             msg: MsgCreateCosmWasmPool {
                 code_id: pair_config.code_id,
-                instantiate_msg: to_binary(&pair::InstantiateMsg {
+                instantiate_msg: to_json_binary(&pair::InstantiateMsg {
                     asset_infos: asset_infos.clone(),
                     token_code_id: 0,
                     factory_addr: MOCK_CONTRACT_ADDR.to_string(),
@@ -633,7 +633,7 @@ fn register() {
     )
     .unwrap();
 
-    let pair_res: PairInfo = from_binary(&query_res).unwrap();
+    let pair_res: PairInfo = from_json(&query_res).unwrap();
     assert_eq!(
         pair_res,
         PairInfo {
@@ -692,7 +692,7 @@ fn register() {
     };
 
     let res = query(deps.as_ref(), env.clone(), query_msg).unwrap();
-    let pairs_res: PairsResponse = from_binary(&res).unwrap();
+    let pairs_res: PairsResponse = from_json(&res).unwrap();
     assert_eq!(
         pairs_res.pairs,
         vec![
@@ -717,7 +717,7 @@ fn register() {
     };
 
     let res = query(deps.as_ref(), env.clone(), query_msg).unwrap();
-    let pairs_res: PairsResponse = from_binary(&res).unwrap();
+    let pairs_res: PairsResponse = from_json(&res).unwrap();
     assert_eq!(
         pairs_res.pairs,
         vec![PairInfo {
@@ -734,7 +734,7 @@ fn register() {
     };
 
     let res = query(deps.as_ref(), env.clone(), query_msg).unwrap();
-    let pairs_res: PairsResponse = from_binary(&res).unwrap();
+    let pairs_res: PairsResponse = from_json(&res).unwrap();
     assert_eq!(
         pairs_res.pairs,
         vec![PairInfo {
@@ -781,7 +781,7 @@ fn register() {
     };
 
     let res = query(deps.as_ref(), env.clone(), query_msg).unwrap();
-    let pairs_res: PairsResponse = from_binary(&res).unwrap();
+    let pairs_res: PairsResponse = from_json(&res).unwrap();
     assert_eq!(
         pairs_res.pairs,
         vec![PairInfo {
@@ -801,7 +801,7 @@ fn register() {
     )
     .unwrap();
     assert_eq!(
-        from_binary::<FeeInfoResponse>(&res).unwrap(),
+        from_json::<FeeInfoResponse>(&res).unwrap(),
         FeeInfoResponse {
             fee_address: Some(Addr::unchecked("maker")),
             total_fee_bps: 100,
@@ -815,7 +815,7 @@ fn register() {
         QueryMsg::BlacklistedPairTypes {},
     )
     .unwrap();
-    assert_eq!(from_binary::<[(); 0]>(&res).unwrap(), []);
+    assert_eq!(from_json::<[(); 0]>(&res).unwrap(), []);
 }
 
 const SET_POOL_ID_FAILED_REPLY_ID: u64 = 2;

@@ -1,7 +1,7 @@
 use astroport::asset::{native_asset_info, AssetInfoExt};
 use astroport::pair;
 use astroport::pair_concentrated::ConcentratedPoolParams;
-use cosmwasm_std::{coin, to_binary, Coin, Decimal};
+use cosmwasm_std::{coin, to_json_binary, Coin, Decimal};
 use osmosis_std::types::osmosis::cosmwasmpool::v1beta1::{
     ContractInfoByPoolIdRequest, ContractInfoByPoolIdResponse, MsgCreateCosmWasmPool,
     MsgCreateCosmWasmPoolResponse,
@@ -171,9 +171,9 @@ fn init_outside_of_factory() {
         .execute::<_, MsgCreateCosmWasmPoolResponse>(
             MsgCreateCosmWasmPool {
                 code_id: helper.code_ids["pair-concentrated"],
-                instantiate_msg: to_binary(&pair::InstantiateMsg {
+                instantiate_msg: to_json_binary(&pair::InstantiateMsg {
                     asset_infos: vec![foo.clone(), bar.clone()],
-                    init_params: Some(to_binary(&default_pcl_params()).unwrap()),
+                    init_params: Some(to_json_binary(&default_pcl_params()).unwrap()),
                     factory_addr: "".to_string(),
                     token_code_id: 0,
                 })

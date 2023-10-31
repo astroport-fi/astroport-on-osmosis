@@ -8,7 +8,7 @@ use astroport_pcl_common::utils::{assert_max_spread, compute_offer_amount, compu
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, coin, ensure, to_binary, BankMsg, Coin, Decimal, Decimal256, DepsMut, Env, Response,
+    attr, coin, ensure, to_json_binary, BankMsg, Coin, Decimal, Decimal256, DepsMut, Env, Response,
     StdError, Uint128,
 };
 use itertools::Itertools;
@@ -225,7 +225,7 @@ fn swap_exact_amount_out(
         )?;
     }
 
-    let response_data = to_binary(&SwapExactAmountOutResponseData {
+    let response_data = to_json_binary(&SwapExactAmountOutResponseData {
         token_in_amount: offer_asset.amount,
     })?;
 
