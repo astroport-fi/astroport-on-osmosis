@@ -5,12 +5,13 @@ use astroport::asset::PairInfo;
 use astroport::pair;
 use cosmwasm_std::testing::{BankQuerier, MockApi, MockStorage};
 use cosmwasm_std::{
-    from_json, to_json_binary, ContractResult, Empty, OwnedDeps, Querier, QuerierResult,
+    coin, from_json, to_json_binary, ContractResult, Empty, OwnedDeps, Querier, QuerierResult,
     QueryRequest, SystemError, SystemResult, WasmQuery,
 };
 use osmosis_std::types::osmosis::cosmwasmpool::v1beta1::{
     ContractInfoByPoolIdRequest, ContractInfoByPoolIdResponse,
 };
+use osmosis_std::types::osmosis::poolmanager;
 
 pub fn mock_dependencies_with_custom_querier<Q: Querier>(
     querier: Q,
@@ -56,18 +57,33 @@ impl<'a> MockedStargateQuerier<'a> {
                 let pair_info = self.pair_infos.get(contract_addr.as_str()).unwrap();
                 SystemResult::Ok(ContractResult::Ok(to_json_binary(pair_info).unwrap()))
             }
-            QueryRequest::Stargate { path, data }
-                if path == "/osmosis.cosmwasmpool.v1beta1.Query/ContractInfoByPoolId" =>
-            {
-                let msg = ContractInfoByPoolIdRequest::try_from(data.clone()).unwrap();
-                let contract = self.pool_id_to_contract.get(&msg.pool_id).unwrap();
-                SystemResult::Ok(ContractResult::Ok(
-                    to_json_binary(&ContractInfoByPoolIdResponse {
-                        contract_address: contract.to_string(),
-                        code_id: 0, // not used in tests
-                    })
-                    .unwrap(),
-                ))
+            QueryRequest::Stargate { path, data } => {
+                match path.as_str() {
+                    "/osmosis.cosmwasmpool.v1beta1.Query/ContractInfoByPoolId" => {
+                        let msg = ContractInfoByPoolIdRequest::try_from(data.clone()).unwrap();
+                        let contract = self.pool_id_to_contract.get(&msg.pool_id).unwrap();
+                        SystemResult::Ok(ContractResult::Ok(
+                            to_json_binary(&ContractInfoByPoolIdResponse {
+                                contract_address: contract.to_string(),
+                                code_id: 0, // not used in tests
+                            })
+                            .unwrap(),
+                        ))
+                    }
+                    "/osmosis.poolmanager.v1beta1.Query/Params" => {
+                        SystemResult::Ok(ContractResult::Ok(
+                            to_json_binary(&poolmanager::v1beta1::ParamsResponse {
+                                params: Some(poolmanager::v1beta1::Params {
+                                    pool_creation_fee: vec![coin(1000_000000, "uosmo").into()],
+                                    taker_fee_params: None,
+                                    authorized_quote_denoms: vec![],
+                                }),
+                            })
+                            .unwrap(),
+                        ))
+                    }
+                    path => unimplemented!("Unsupported stargate query for path {path}"),
+                }
             }
             _ => SystemResult::Err(SystemError::InvalidRequest {
                 error: "Unsupported query request".to_string(),

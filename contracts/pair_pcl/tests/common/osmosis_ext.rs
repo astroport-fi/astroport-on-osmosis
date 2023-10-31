@@ -16,6 +16,7 @@ use osmosis_std::types::osmosis::cosmwasmpool::v1beta1::{
     ContractInfoByPoolIdRequest, ContractInfoByPoolIdResponse, MsgCreateCosmWasmPool,
     MsgCreateCosmWasmPoolResponse,
 };
+use osmosis_std::types::osmosis::poolmanager;
 use osmosis_std::types::osmosis::poolmanager::v1beta1::{
     MsgSwapExactAmountIn, MsgSwapExactAmountOut,
 };
@@ -247,6 +248,15 @@ impl Module for OsmosisStargate {
                 Ok(to_json_binary(&ContractInfoByPoolIdResponse {
                     contract_address,
                     code_id: 0,
+                })?)
+            }
+            "/osmosis.poolmanager.v1beta1.Query/Params" => {
+                Ok(to_json_binary(&poolmanager::v1beta1::ParamsResponse {
+                    params: Some(poolmanager::v1beta1::Params {
+                        pool_creation_fee: vec![coin(1000_000000, "uosmo").into()],
+                        taker_fee_params: None,
+                        authorized_quote_denoms: vec![],
+                    }),
                 })?)
             }
             _ => {

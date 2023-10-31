@@ -116,7 +116,7 @@ dependencies = [
  "cw-utils 1.0.2",
  "cw2 1.1.1",
  "itertools 0.11.0",
- "osmosis-std 0.17.0-rc0",
+ "osmosis-std",
  "prost 0.11.9",
  "thiserror",
 ]
@@ -153,7 +153,7 @@ dependencies = [
  "astroport 3.6.2",
  "astroport-on-osmosis",
  "cosmwasm-std",
- "osmosis-std 0.20.1",
+ "osmosis-std",
  "osmosis-test-tube",
  "serde",
  "serde_json",
@@ -195,7 +195,7 @@ dependencies = [
  "cw2 1.1.1",
  "derivative",
  "itertools 0.11.0",
- "osmosis-std 0.20.1",
+ "osmosis-std",
  "thiserror",
 ]
 
@@ -1633,47 +1633,18 @@ checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
 name = "osmosis-std"
-version = "0.17.0-rc0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0b022b748710ecdf1adc6a124c3bef29f17ef05e7fa1260a08889d1d53f9cc5"
-dependencies = [
- "chrono",
- "cosmwasm-std",
- "osmosis-std-derive 0.16.2",
- "prost 0.11.9",
- "prost-types",
- "schemars",
- "serde",
- "serde-cw-value",
-]
-
-[[package]]
-name = "osmosis-std"
 version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d7aa053bc3fad557ac90a0377688b400c395e2537f0f1de3293a15cad2e970"
 dependencies = [
  "chrono",
  "cosmwasm-std",
- "osmosis-std-derive 0.20.1",
+ "osmosis-std-derive",
  "prost 0.11.9",
  "prost-types",
  "schemars",
  "serde",
  "serde-cw-value",
-]
-
-[[package]]
-name = "osmosis-std-derive"
-version = "0.16.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f47f0b2f22adb341bb59e5a3a1b464dde033181954bd055b9ae86d6511ba465b"
-dependencies = [
- "itertools 0.10.5",
- "proc-macro2",
- "prost-types",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]
@@ -1699,7 +1670,7 @@ dependencies = [
  "bindgen",
  "cosmrs",
  "cosmwasm-std",
- "osmosis-std 0.20.1",
+ "osmosis-std",
  "prost 0.11.9",
  "serde",
  "serde_json",
@@ -2545,7 +2516,7 @@ dependencies = [
  "base64 0.13.1",
  "cosmrs",
  "cosmwasm-std",
- "osmosis-std 0.20.1",
+ "osmosis-std",
  "prost 0.11.9",
  "serde",
  "serde_json",

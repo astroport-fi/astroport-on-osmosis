@@ -12,15 +12,16 @@ use astroport::pair::InstantiateMsg as PairInstantiateMsg;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, ensure, to_json_binary, wasm_execute, Binary, Deps, DepsMut, Empty, Env, MessageInfo,
+    attr, coin, to_json_binary, wasm_execute, Binary, Deps, DepsMut, Empty, Env, MessageInfo,
     Order, QuerierWrapper, Reply, Response, StdError, StdResult, SubMsg,
 };
 use cw2::set_contract_version;
-use cw_utils::must_pay;
+use cw_utils::one_coin;
 use itertools::Itertools;
 use osmosis_std::types::osmosis::cosmwasmpool::v1beta1::{
     CosmwasmpoolQuerier, MsgCreateCosmWasmPool, MsgCreateCosmWasmPoolResponse,
 };
+use osmosis_std::types::osmosis::poolmanager::v1beta1::PoolmanagerQuerier;
 
 use astroport_on_osmosis::pair_pcl::ExecuteMsg as PclOsmoExecuteMsg;
 
@@ -37,9 +38,6 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// A `reply` call code ID used in a sub-message.
 const INSTANTIATE_PAIR_REPLY_ID: u64 = 1;
 const SET_POOL_ID_FAILED_REPLY_ID: u64 = 2;
-/// 100 OSMO flat fee to create pool
-const CREATE_FEE_DENOM: &str = "uosmo";
-const CREATE_FEE: u128 = 1000_000000;
 
 /// Creates a new contract with the specified parameters packed in the `msg` variable.
 ///
@@ -264,16 +262,31 @@ pub fn execute_create_pair(
     asset_infos: Vec<AssetInfo>,
     init_params: Option<Binary>,
 ) -> Result<Response, ContractError> {
-    // TODO: agreed with Osmosis that they will expose stargate query so we won't need to pin consts in the code
-    // Osmosis has 1000 OSMO flat fee to create a pool.
-    // We don't need to send fees with MsgCreateCosmWasmPool because Osmosis handles it internally and charges factory's balance, however, the creator of the pool needs to pay this fee when creating the pool
-    let amount = must_pay(&info, CREATE_FEE_DENOM)?;
-    ensure!(
-        amount.u128() == CREATE_FEE,
-        StdError::generic_err(format!(
-            "Incorrect funds sent. Pool initialization costs {CREATE_FEE}{CREATE_FEE_DENOM}"
-        ))
-    );
+    let pm_quierier = PoolmanagerQuerier::new(&deps.querier);
+    let allowed_creation_fee = pm_quierier.params()?.params.map_or_else(
+        // Free if poolmanager params not set
+        || Ok(vec![]),
+        |params| {
+            params
+                .pool_creation_fee
+                .into_iter()
+                .map(|fee| Ok(coin(fee.amount.parse()?, fee.denom)))
+                .collect::<Result<Vec<_>, ContractError>>()
+        },
+    )?;
+
+    // At the time of writing Osmosis has 1000 OSMO flat fee to create a pool.
+    // However, pool_creation_fee is an array of coins, so it's possible that in future Osmosis will support multiple fee coins.
+    // User initiated create_pool factory endpoint must pay this fee.
+    let maybe_fee_coin = one_coin(&info)?;
+    allowed_creation_fee
+        .into_iter()
+        .find(|fee| maybe_fee_coin.eq(fee))
+        .ok_or_else(|| {
+            StdError::generic_err(format!(
+                "Not enough funds to create a pool. Check pool_creation_fee in poolmanager params."
+            ))
+        })?;
     check_asset_infos(deps.querier, &asset_infos)?;
 
     if PAIRS.has(deps.storage, &pair_key(&asset_infos)) {

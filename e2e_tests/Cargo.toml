@@ -7,7 +7,7 @@ edition = "2021"
 anyhow = "1"
 cosmwasm-std = "1"
 serde = "1"
-osmosis-std = "0.20.1"
+osmosis-std = { workspace = true }
 osmosis-test-tube = "20.1.1"
 test-tube = "0.2.0"
 #osmosis-test-tube = { path = "../../test-tube/packages/osmosis-test-tube" }
