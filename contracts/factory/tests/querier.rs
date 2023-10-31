@@ -1,11 +1,11 @@
-use astroport::asset::PairInfo;
-use astroport::pair;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
+use astroport::asset::PairInfo;
+use astroport::pair;
 use cosmwasm_std::testing::{BankQuerier, MockApi, MockStorage};
 use cosmwasm_std::{
-    from_binary, from_slice, to_binary, ContractResult, Empty, OwnedDeps, Querier, QuerierResult,
+    from_json, to_json_binary, ContractResult, Empty, OwnedDeps, Querier, QuerierResult,
     QueryRequest, SystemError, SystemResult, WasmQuery,
 };
 use osmosis_std::types::osmosis::cosmwasmpool::v1beta1::{
@@ -49,12 +49,12 @@ impl<'a> MockedStargateQuerier<'a> {
         match request {
             QueryRequest::Bank(bank_query) => self.bank.query(bank_query),
             QueryRequest::Wasm(WasmQuery::Smart { contract_addr, msg }) => {
-                match from_binary(msg).unwrap() {
+                match from_json(msg).unwrap() {
                     pair::QueryMsg::Pair {} => {}
                     _ => unimplemented!("Unsupported wasm smart query"),
                 }
                 let pair_info = self.pair_infos.get(contract_addr.as_str()).unwrap();
-                SystemResult::Ok(ContractResult::Ok(to_binary(pair_info).unwrap()))
+                SystemResult::Ok(ContractResult::Ok(to_json_binary(pair_info).unwrap()))
             }
             QueryRequest::Stargate { path, data }
                 if path == "/osmosis.cosmwasmpool.v1beta1.Query/ContractInfoByPoolId" =>
@@ -62,7 +62,7 @@ impl<'a> MockedStargateQuerier<'a> {
                 let msg = ContractInfoByPoolIdRequest::try_from(data.clone()).unwrap();
                 let contract = self.pool_id_to_contract.get(&msg.pool_id).unwrap();
                 SystemResult::Ok(ContractResult::Ok(
-                    to_binary(&ContractInfoByPoolIdResponse {
+                    to_json_binary(&ContractInfoByPoolIdResponse {
                         contract_address: contract.to_string(),
                         code_id: 0, // not used in tests
                     })
@@ -71,7 +71,7 @@ impl<'a> MockedStargateQuerier<'a> {
             }
             _ => SystemResult::Err(SystemError::InvalidRequest {
                 error: "Unsupported query request".to_string(),
-                request: to_binary(&request).unwrap(),
+                request: to_json_binary(&request).unwrap(),
             }),
         }
     }
@@ -79,7 +79,7 @@ impl<'a> MockedStargateQuerier<'a> {
 
 impl Querier for MockedStargateQuerier<'_> {
     fn raw_query(&self, bin_request: &[u8]) -> QuerierResult {
-        let request: QueryRequest<Empty> = match from_slice(bin_request) {
+        let request: QueryRequest<Empty> = match from_json(bin_request) {
             Ok(v) => v,
             Err(e) => {
                 return SystemResult::Err(SystemError::InvalidRequest {

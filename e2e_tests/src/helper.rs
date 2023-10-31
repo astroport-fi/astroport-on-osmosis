@@ -10,7 +10,7 @@ use astroport::asset::{Asset, AssetInfo, PairInfo};
 use astroport::factory::{PairConfig, PairType};
 use astroport::pair_concentrated::ConcentratedPoolParams;
 use astroport::{factory, pair};
-use cosmwasm_std::{coin, coins, to_binary, Coin, Decimal};
+use cosmwasm_std::{coin, coins, to_json_binary, Coin, Decimal};
 use osmosis_std::types::cosmos::bank::v1beta1::QueryBalanceRequest;
 use osmosis_std::types::cosmwasm::wasm::v1::MsgExecuteContractResponse;
 use osmosis_std::types::osmosis::cosmwasmpool::v1beta1::{
@@ -249,7 +249,7 @@ impl<'a> TestAppWrapper<'a> {
             &factory::ExecuteMsg::CreatePair {
                 pair_type: PairType::Custom("concentrated".to_string()),
                 asset_infos: asset_infos.to_vec(),
-                init_params: Some(to_binary(&init_params).unwrap()),
+                init_params: Some(to_json_binary(&init_params).unwrap()),
             },
             &coins(1000_000000, "uosmo"),
             &self.signer,

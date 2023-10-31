@@ -3,13 +3,11 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use anyhow::Result as AnyResult;
-use astroport_on_osmosis::pair_pcl;
-use astroport_on_osmosis::pair_pcl::{GetSwapFeeResponse, QueryMsg};
 use cosmwasm_schema::schemars::JsonSchema;
 use cosmwasm_schema::serde::de::DeserializeOwned;
 use cosmwasm_std::{
-    coin, coins, from_binary, to_binary, Addr, Api, BankMsg, Binary, BlockInfo, CustomQuery, Empty,
-    Querier, QueryRequest, Storage, SubMsgResponse, WasmMsg, WasmQuery,
+    coin, coins, from_json, to_json_binary, Addr, Api, BankMsg, Binary, BlockInfo, CustomQuery,
+    Empty, Querier, QueryRequest, Storage, SubMsgResponse, WasmMsg, WasmQuery,
 };
 use cw_multi_test::{
     AppResponse, BankSudo, CosmosRouter, Module, Stargate, StargateMsg, StargateQuery, WasmSudo,
@@ -24,6 +22,9 @@ use osmosis_std::types::osmosis::poolmanager::v1beta1::{
 use osmosis_std::types::osmosis::tokenfactory::v1beta1::{
     MsgBurn, MsgCreateDenom, MsgCreateDenomResponse, MsgMint,
 };
+
+use astroport_on_osmosis::pair_pcl;
+use astroport_on_osmosis::pair_pcl::{GetSwapFeeResponse, QueryMsg};
 
 #[derive(Default)]
 pub struct OsmosisStargate {
@@ -146,7 +147,7 @@ impl Module for OsmosisStargate {
                         block,
                         QueryRequest::Wasm(WasmQuery::Smart {
                             contract_addr: contract_addr.to_string(),
-                            msg: to_binary(&QueryMsg::GetSwapFee {}).unwrap(),
+                            msg: to_json_binary(&QueryMsg::GetSwapFee {}).unwrap(),
                         }),
                     )
                     .unwrap();
@@ -156,7 +157,7 @@ impl Module for OsmosisStargate {
                     token_in: coin(token_in.amount.parse()?, token_in.denom),
                     token_out_denom: pm_msg.routes[0].token_out_denom.clone(),
                     token_out_min_amount: pm_msg.token_out_min_amount.parse()?,
-                    swap_fee: from_binary::<GetSwapFeeResponse>(&res)?.swap_fee,
+                    swap_fee: from_json::<GetSwapFeeResponse>(&res)?.swap_fee,
                 };
 
                 let wasm_sudo_msg = WasmSudo::new(&contract_addr, &inner_contract_msg)?;
@@ -177,7 +178,7 @@ impl Module for OsmosisStargate {
                         block,
                         QueryRequest::Wasm(WasmQuery::Smart {
                             contract_addr: contract_addr.to_string(),
-                            msg: to_binary(&QueryMsg::GetSwapFee {}).unwrap(),
+                            msg: to_json_binary(&QueryMsg::GetSwapFee {}).unwrap(),
                         }),
                     )
                     .unwrap();
@@ -187,7 +188,7 @@ impl Module for OsmosisStargate {
                     token_in_denom: pm_msg.routes[0].token_in_denom.clone(),
                     token_in_max_amount: pm_msg.token_in_max_amount.parse()?,
                     token_out: coin(token_out.amount.parse()?, token_out.denom),
-                    swap_fee: from_binary::<GetSwapFeeResponse>(&res)?.swap_fee,
+                    swap_fee: from_json::<GetSwapFeeResponse>(&res)?.swap_fee,
                 };
 
                 router.execute(
@@ -243,7 +244,7 @@ impl Module for OsmosisStargate {
             "/osmosis.cosmwasmpool.v1beta1.Query/ContractInfoByPoolId" => {
                 let inner: ContractInfoByPoolIdRequest = request.data.try_into()?;
                 let contract_address = self.cw_pools.borrow()[&inner.pool_id].clone();
-                Ok(to_binary(&ContractInfoByPoolIdResponse {
+                Ok(to_json_binary(&ContractInfoByPoolIdResponse {
                     contract_address,
                     code_id: 0,
                 })?)

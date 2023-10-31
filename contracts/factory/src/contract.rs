@@ -12,8 +12,8 @@ use astroport::pair::InstantiateMsg as PairInstantiateMsg;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, ensure, to_binary, wasm_execute, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Order,
-    QuerierWrapper, Reply, Response, StdError, StdResult, SubMsg,
+    attr, ensure, to_json_binary, wasm_execute, Binary, Deps, DepsMut, Empty, Env, MessageInfo,
+    Order, QuerierWrapper, Reply, Response, StdError, StdResult, SubMsg,
 };
 use cw2::set_contract_version;
 use cw_utils::must_pay;
@@ -295,7 +295,7 @@ pub fn execute_create_pair(
 
     let cw_pool_msg = MsgCreateCosmWasmPool {
         code_id: pair_config.code_id,
-        instantiate_msg: to_binary(&PairInstantiateMsg {
+        instantiate_msg: to_json_binary(&PairInstantiateMsg {
             asset_infos: asset_infos.clone(),
             token_code_id: 0,
             factory_addr: env.contract.address.to_string(),
@@ -424,13 +424,13 @@ pub fn deregister(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Config {} => to_binary(&query_config(deps)?),
-        QueryMsg::Pair { asset_infos } => to_binary(&query_pair(deps, asset_infos)?),
+        QueryMsg::Config {} => to_json_binary(&query_config(deps)?),
+        QueryMsg::Pair { asset_infos } => to_json_binary(&query_pair(deps, asset_infos)?),
         QueryMsg::Pairs { start_after, limit } => {
-            to_binary(&query_pairs(deps, start_after, limit)?)
+            to_json_binary(&query_pairs(deps, start_after, limit)?)
         }
-        QueryMsg::FeeInfo { pair_type } => to_binary(&query_fee_info(deps, pair_type)?),
-        QueryMsg::BlacklistedPairTypes {} => to_binary(&query_blacklisted_pair_types(deps)?),
+        QueryMsg::FeeInfo { pair_type } => to_json_binary(&query_fee_info(deps, pair_type)?),
+        QueryMsg::BlacklistedPairTypes {} => to_json_binary(&query_blacklisted_pair_types(deps)?),
     }
 }
 
