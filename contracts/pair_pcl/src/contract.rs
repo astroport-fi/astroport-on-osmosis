@@ -184,7 +184,6 @@ pub fn instantiate(
                 "disabled"
             },
         ))
-    // TODO: .set_data(to_json_binary(&AfterPoolCreated {create_pool_guages: None})?)
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -860,8 +859,10 @@ fn update_config(
 
             "enable_asset_balances_tracking"
         }
-        ConcentratedPoolUpdateParams::EnableFeeShare { .. } => todo!(),
-        ConcentratedPoolUpdateParams::DisableFeeShare => todo!(),
+        ConcentratedPoolUpdateParams::EnableFeeShare { .. }
+        | ConcentratedPoolUpdateParams::DisableFeeShare => Err(StdError::generic_err(
+            "Fee sharing is not supported in this version",
+        ))?,
     };
     CONFIG.save(deps.storage, &config)?;
 
