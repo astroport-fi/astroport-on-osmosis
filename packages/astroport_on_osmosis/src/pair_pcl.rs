@@ -212,7 +212,6 @@ pub struct CalcInAmtGivenOutResponse {
     pub token_in: Coin,
 }
 
-// TODO: I expect the structures below must be defined in osmosis-std. Until then we keep them here.
 #[cw_serde]
 pub struct SwapExactAmountInResponseData {
     pub token_out_amount: Uint128,

@@ -410,7 +410,6 @@ pub fn deregister(
         // sets the allocation point to zero for the lp_token
         response.messages.push(SubMsg::new(wasm_execute(
             generator,
-            // TODO: TBD new generator API
             &DeactivatePool {
                 lp_token: pair_info.liquidity_token.to_string(),
             },
