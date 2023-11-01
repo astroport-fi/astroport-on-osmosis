@@ -1,10 +1,10 @@
 use std::vec;
 
+use astroport::asset::AssetInfoExt;
 use astroport::asset::{
     addr_opt_validate, Asset, AssetInfo, CoinsExt, Decimal256Ext, PairInfo,
     MINIMUM_LIQUIDITY_AMOUNT,
 };
-use astroport::asset::{validate_native_denom, AssetInfoExt};
 use astroport::common::{claim_ownership, drop_ownership_proposal, propose_new_owner};
 use astroport::cosmwasm_ext::{AbsDiff, DecimalToInteger, IntegerToDecimal};
 use astroport::factory::PairType;
@@ -77,8 +77,7 @@ pub fn instantiate(
             AssetInfo::Token { .. } => None,
             AssetInfo::NativeToken { denom } => Some(denom),
         })
-        .map(|denom| validate_native_denom(denom).map(|_| denom.to_string()))
-        .collect::<StdResult<Vec<_>>>()?;
+        .collect_vec();
     ensure!(
         denoms.len() == 2,
         StdError::generic_err("CW20 tokens are not supported")
@@ -88,7 +87,7 @@ pub fn instantiate(
     // This query requires a chain to run cosmwasm VM >= 1.1
     for denom in denoms {
         deps.querier
-            .query_supply(&denom)
+            .query_supply(denom)
             .map_err(|_| StdError::generic_err(format!("Denom {denom} doesn't exist on chain")))?;
     }
 
