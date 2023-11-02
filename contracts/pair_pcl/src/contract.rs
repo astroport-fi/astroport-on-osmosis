@@ -510,7 +510,7 @@ pub fn provide_liquidity(
 /// * **assets** defines number of coins a user wants to withdraw per each asset.
 ///
 /// * **receiver** address that will receive assets back from the pair contract
-fn withdraw_liquidity(
+pub fn withdraw_liquidity(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
@@ -604,7 +604,7 @@ fn withdraw_liquidity(
 ///
 /// From external perspective this function behaves in the same way as in other Astroport pairs.
 /// However, internally it forwards swap request to the Osmosis DEX module.
-fn execute_swap(
+pub fn execute_swap(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
@@ -666,7 +666,7 @@ fn execute_swap(
 /// * **max_spread** sets the maximum spread of the swap operation.
 ///
 /// * **to** sets the recipient of the swap operation.
-pub(crate) fn internal_swap(
+pub fn internal_swap(
     deps: DepsMut,
     env: Env,
     sender: Addr,
@@ -815,7 +815,7 @@ pub(crate) fn internal_swap(
 /// Updates the pool configuration with the specified parameters in the `params` variable.
 ///
 /// * **params** new parameter values in [`Binary`] form.
-fn update_config(
+pub fn update_config(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
