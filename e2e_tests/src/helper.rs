@@ -141,7 +141,7 @@ impl<'a> TestAppWrapper<'a> {
             .unwrap();
         helper.coin_registry = coin_registry_address.clone();
 
-        // setting 3 a little hacky but I don't other way
+        // setting 3 a little hacky but I don't know other way
         helper.code_ids.insert("pair-concentrated", 3);
 
         let factory_init_msg = factory::InstantiateMsg {
