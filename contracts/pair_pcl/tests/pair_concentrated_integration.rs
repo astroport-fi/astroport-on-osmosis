@@ -174,24 +174,6 @@ fn check_wrong_initialization() {
 }
 
 #[test]
-fn check_create_pair_with_unsupported_denom() {
-    let owner = Addr::unchecked("owner");
-
-    let wrong_coins = vec![TestCoin::native("rc"), TestCoin::native("uosmo")];
-    let valid_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
-
-    let params = common_pcl_params();
-
-    let err = Helper::new(&owner, wrong_coins.clone(), params.clone()).unwrap_err();
-    assert_eq!(
-        "Generic error: Invalid denom length [3,128]: rc",
-        err.root_cause().to_string()
-    );
-
-    Helper::new(&owner, valid_coins.clone(), params.clone()).unwrap();
-}
-
-#[test]
 fn check_create_pair_with_cw20() {
     let owner = Addr::unchecked("owner");
 

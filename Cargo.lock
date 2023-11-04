@@ -1662,9 +1662,9 @@ dependencies = [
 
 [[package]]
 name = "osmosis-test-tube"
-version = "20.1.1"
+version = "20.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea66b0b24c413a09ea9881145b0559edf31993c42d3c5b91f03087c289fe40b9"
+checksum = "2c1534a419d9e2c27b0b4869e68496b92abca93464b82efbdd1f1b43467f2938"
 dependencies = [
  "base64 0.21.5",
  "bindgen",
