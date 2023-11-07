@@ -102,10 +102,10 @@ fn test_init() {
         whitelist_code_id: 0,
         coin_registry_address: "coin_registry".to_string(),
     };
-    instantiate(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap();
+    instantiate(deps.as_mut(), mock_env(), info, msg.clone()).unwrap();
 
     let query_res = query(deps.as_ref(), mock_env(), factory::QueryMsg::Config {}).unwrap();
-    let config_res: ConfigResponse = from_json(&query_res).unwrap();
+    let config_res: ConfigResponse = from_json(query_res).unwrap();
     assert_eq!(0, config_res.token_code_id);
     assert_eq!(msg.pair_configs, config_res.pair_configs);
     assert_eq!("owner", config_res.owner.as_str());
@@ -126,7 +126,7 @@ fn update_config() {
     }];
 
     let msg = InstantiateMsg {
-        pair_configs: pair_configs.clone(),
+        pair_configs: pair_configs,
         token_code_id: 123u64,
         fee_address: None,
         owner: owner.to_string(),
@@ -155,7 +155,7 @@ fn update_config() {
     assert_eq!(0, res.messages.len());
 
     let query_res = query(deps.as_ref(), env, QueryMsg::Config {}).unwrap();
-    let config_res: ConfigResponse = from_json(&query_res).unwrap();
+    let config_res: ConfigResponse = from_json(query_res).unwrap();
     assert_eq!(owner, config_res.owner);
     assert_eq!(
         String::from("new_fee_addr"),
@@ -177,7 +177,7 @@ fn update_config() {
         coin_registry_address: None,
     };
 
-    let err = execute(deps.as_mut(), env.clone(), info, msg).unwrap_err();
+    let err = execute(deps.as_mut(), env, info, msg).unwrap_err();
     assert_eq!(err, ContractError::Unauthorized {});
 }
 
@@ -256,7 +256,7 @@ fn update_owner() {
 
     // Let's query the state
     let config: ConfigResponse =
-        from_json(&query(deps.as_ref(), env.clone(), QueryMsg::Config {}).unwrap()).unwrap();
+        from_json(query(deps.as_ref(), env, QueryMsg::Config {}).unwrap()).unwrap();
     assert_eq!(new_owner, config.owner);
 }
 
@@ -290,8 +290,8 @@ fn update_pair_config() {
     instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
 
     // It worked, let's query the state
-    let query_res = query(deps.as_ref(), env.clone(), QueryMsg::Config {}).unwrap();
-    let config_res: ConfigResponse = from_json(&query_res).unwrap();
+    let query_res = query(deps.as_ref(), env, QueryMsg::Config {}).unwrap();
+    let config_res: ConfigResponse = from_json(query_res).unwrap();
     assert_eq!(pair_configs, config_res.pair_configs);
 
     // Update config
@@ -311,12 +311,12 @@ fn update_pair_config() {
         config: pair_config.clone(),
     };
 
-    let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap_err();
+    let res = execute(deps.as_mut(), env, info, msg).unwrap_err();
     assert_eq!(res, ContractError::Unauthorized {});
 
     // Check validation of total and maker fee bps
     let env = mock_env();
-    let info = mock_info(owner.clone(), &[]);
+    let info = mock_info(owner, &[]);
     let msg = ExecuteMsg::UpdatePairConfig {
         config: PairConfig {
             code_id: 123u64,
@@ -331,7 +331,7 @@ fn update_pair_config() {
     let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap_err();
     assert_eq!(res, ContractError::PairConfigInvalidFeeBps {});
 
-    let info = mock_info(owner.clone(), &[]);
+    let info = mock_info(owner, &[]);
     let msg = ExecuteMsg::UpdatePairConfig {
         config: pair_config.clone(),
     };
@@ -341,7 +341,7 @@ fn update_pair_config() {
 
     // It worked, let's query the state
     let query_res = query(deps.as_ref(), env.clone(), QueryMsg::Config {}).unwrap();
-    let config_res: ConfigResponse = from_json(&query_res).unwrap();
+    let config_res: ConfigResponse = from_json(query_res).unwrap();
     assert_eq!(vec![pair_config.clone()], config_res.pair_configs);
 
     // Add second config
@@ -362,9 +362,9 @@ fn update_pair_config() {
     execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
     let query_res = query(deps.as_ref(), env.clone(), QueryMsg::Config {}).unwrap();
-    let config_res: ConfigResponse = from_json(&query_res).unwrap();
+    let config_res: ConfigResponse = from_json(query_res).unwrap();
     assert_eq!(
-        vec![pair_config_custom.clone(), pair_config.clone()],
+        vec![pair_config_custom, pair_config],
         config_res.pair_configs
     );
 
@@ -393,7 +393,7 @@ fn update_pair_config() {
 
     let err = execute(
         deps.as_mut(),
-        env.clone(),
+        env,
         mock_info("user", &coins(1000_000000, "uosmo")),
         ExecuteMsg::CreatePair {
             pair_type: PairType::Custom("test".to_string()),
@@ -432,7 +432,7 @@ fn create_pair() {
     let env = mock_env();
     let info = mock_info("addr0000", &[]);
 
-    instantiate(deps.as_mut(), env, info, factory_init_msg.clone()).unwrap();
+    instantiate(deps.as_mut(), env, info, factory_init_msg).unwrap();
 
     let asset_infos = vec![
         native_asset_info("asset0000".to_string()),
@@ -446,7 +446,7 @@ fn create_pair() {
     let res = execute(
         deps.as_mut(),
         env.clone(),
-        info.clone(),
+        info,
         ExecuteMsg::CreatePair {
             pair_type: PairType::Xyk {},
             asset_infos: asset_infos.clone(),
@@ -489,7 +489,7 @@ fn create_pair() {
 
     let res = execute(
         deps.as_mut(),
-        env.clone(),
+        env,
         mock_info("addr0000", &coins(1000_000000, "uosmo")),
         ExecuteMsg::CreatePair {
             pair_type: PairType::Xyk {},
@@ -512,7 +512,7 @@ fn create_pair() {
             msg: MsgCreateCosmWasmPool {
                 code_id: pair_config.code_id,
                 instantiate_msg: to_json_binary(&pair::InstantiateMsg {
-                    asset_infos: asset_infos.clone(),
+                    asset_infos: asset_infos,
                     token_code_id: 0,
                     factory_addr: MOCK_CONTRACT_ADDR.to_string(),
                     init_params: None,
@@ -626,14 +626,14 @@ fn register() {
 
     let query_res = query(
         deps.as_ref(),
-        env.clone(),
+        env,
         QueryMsg::Pair {
             asset_infos: asset_infos.clone(),
         },
     )
     .unwrap();
 
-    let pair_res: PairInfo = from_json(&query_res).unwrap();
+    let pair_res: PairInfo = from_json(query_res).unwrap();
     assert_eq!(
         pair_res,
         PairInfo {
@@ -680,10 +680,10 @@ fn register() {
         }),
     };
 
-    reply(deps.as_mut(), mock_env(), reply_msg.clone()).unwrap();
+    reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
 
     // Try to create one more pair with the same assets
-    let err = execute(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap_err();
+    let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
     assert_eq!(err, ContractError::PairWasCreated {});
 
     let query_msg = QueryMsg::Pairs {
@@ -692,7 +692,7 @@ fn register() {
     };
 
     let res = query(deps.as_ref(), env.clone(), query_msg).unwrap();
-    let pairs_res: PairsResponse = from_json(&res).unwrap();
+    let pairs_res: PairsResponse = from_json(res).unwrap();
     assert_eq!(
         pairs_res.pairs,
         vec![
@@ -717,7 +717,7 @@ fn register() {
     };
 
     let res = query(deps.as_ref(), env.clone(), query_msg).unwrap();
-    let pairs_res: PairsResponse = from_json(&res).unwrap();
+    let pairs_res: PairsResponse = from_json(res).unwrap();
     assert_eq!(
         pairs_res.pairs,
         vec![PairInfo {
@@ -733,8 +733,8 @@ fn register() {
         limit: None,
     };
 
-    let res = query(deps.as_ref(), env.clone(), query_msg).unwrap();
-    let pairs_res: PairsResponse = from_json(&res).unwrap();
+    let res = query(deps.as_ref(), env, query_msg).unwrap();
+    let pairs_res: PairsResponse = from_json(res).unwrap();
     assert_eq!(
         pairs_res.pairs,
         vec![PairInfo {
@@ -750,7 +750,7 @@ fn register() {
     let info = mock_info("wrong_addr0000", &coins(1000_000000, "uosmo"));
     let res = execute(
         deps.as_mut(),
-        env.clone(),
+        env,
         info,
         ExecuteMsg::Deregister {
             asset_infos: asset_infos_2.clone(),
@@ -762,13 +762,13 @@ fn register() {
 
     // Proper deregister
     let env = mock_env();
-    let info = mock_info(owner.clone(), &[]);
+    let info = mock_info(owner, &[]);
     let res = execute(
         deps.as_mut(),
         env.clone(),
         info,
         ExecuteMsg::Deregister {
-            asset_infos: asset_infos_2.clone(),
+            asset_infos: asset_infos_2,
         },
     )
     .unwrap();
@@ -781,13 +781,13 @@ fn register() {
     };
 
     let res = query(deps.as_ref(), env.clone(), query_msg).unwrap();
-    let pairs_res: PairsResponse = from_json(&res).unwrap();
+    let pairs_res: PairsResponse = from_json(res).unwrap();
     assert_eq!(
         pairs_res.pairs,
         vec![PairInfo {
             liquidity_token: Addr::unchecked("liquidity0000"),
             contract_addr: Addr::unchecked("pair0000"),
-            asset_infos: asset_infos.clone(),
+            asset_infos: asset_infos,
             pair_type: PairType::Xyk {},
         },]
     );
@@ -809,12 +809,7 @@ fn register() {
         }
     );
 
-    let res = query(
-        deps.as_ref(),
-        env.clone(),
-        QueryMsg::BlacklistedPairTypes {},
-    )
-    .unwrap();
+    let res = query(deps.as_ref(), env, QueryMsg::BlacklistedPairTypes {}).unwrap();
     assert_eq!(from_json::<[(); 0]>(&res).unwrap(), []);
 }
 

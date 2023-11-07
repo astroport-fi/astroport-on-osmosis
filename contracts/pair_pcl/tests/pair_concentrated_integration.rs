@@ -181,7 +181,7 @@ fn check_create_pair_with_cw20() {
 
     let params = common_pcl_params();
 
-    let err = Helper::new(&owner, wrong_coins.clone(), params.clone()).unwrap_err();
+    let err = Helper::new(&owner, wrong_coins, params).unwrap_err();
     assert_eq!(
         err.downcast::<astroport_factory::error::ContractError>()
             .unwrap(),
@@ -256,7 +256,7 @@ fn provide_and_withdraw() {
         .provide_liquidity(
             &user1,
             &[
-                random_coin.clone(),
+                random_coin,
                 helper.assets[&test_coins[0]].with_balance(1u8),
                 helper.assets[&test_coins[1]].with_balance(1u8),
             ],
@@ -859,7 +859,7 @@ fn check_prices() {
 
     let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
-    let helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
+    let helper = Helper::new(&owner, test_coins, common_pcl_params()).unwrap();
     let err = helper.query_prices().unwrap_err();
     assert_eq!(StdError::generic_err("Querier contract error: Generic error: Not implemented.Use { \"observe\" : { \"seconds_ago\" : ... } } instead.")
     , err);
@@ -985,7 +985,7 @@ fn query_d_test() {
     let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     // create pair with test_coins
-    let helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
+    let helper = Helper::new(&owner, test_coins, common_pcl_params()).unwrap();
 
     // query current pool D value before providing any liquidity
     let err = helper.query_d().unwrap_err();
@@ -1549,7 +1549,7 @@ fn test_osmosis_specific_queries() {
         err,
         StdError::generic_err(format!(
             "Querier contract error: Generic error: Invalid pool denoms random {base}. Must be {base} {quote}",
-            quote = helper.assets[&test_coins[1]].to_string(),
+            quote = helper.assets[&test_coins[1]],
             base = helper.assets[&test_coins[0]].to_string()
         ))
     );

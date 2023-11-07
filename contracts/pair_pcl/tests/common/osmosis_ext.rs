@@ -210,11 +210,9 @@ impl Module for OsmosisStargate {
                 let wasm_sudo_msg = WasmSudo::new(&contract_addr, &inner_contract_msg)?;
                 router.sudo(api, storage, block, wasm_sudo_msg.into())
             }
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Unexpected exec msg {msg:?} from {sender:?}",
-                ))
-            }
+            _ => Err(anyhow::anyhow!(
+                "Unexpected exec msg {msg:?} from {sender:?}",
+            )),
         }
     }
 
@@ -259,11 +257,9 @@ impl Module for OsmosisStargate {
                     }),
                 })?)
             }
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Unexpected stargate query request {request:?}",
-                ))
-            }
+            _ => Err(anyhow::anyhow!(
+                "Unexpected stargate query request {request:?}",
+            )),
         }
     }
 }
