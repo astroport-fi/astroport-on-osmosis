@@ -102,7 +102,6 @@ pub fn instantiate(
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    // TODO: add to README
     // We pin factory address into wasm binary to prevent using Astroport PCL pools on Osmosis without
     // paying fees to Astroport protocol.
     // Users are discouraged from instantiating PCL pools using usual Osmosis tools as such pool won't be included
@@ -135,7 +134,6 @@ pub fn instantiate(
         },
     };
 
-    // TODO: worth adding to README
     // NOTE: we are keeping Config as general as possible across all PCL implementations.
     // However, liquidity_token on osmosis is not a cw20 contract, but a native token.
     // Addr::unchecked() is a little hack but devs shouldn't consider it as a cw20 contract on Osmosis.
