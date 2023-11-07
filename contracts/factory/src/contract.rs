@@ -283,9 +283,10 @@ pub fn execute_create_pair(
         .into_iter()
         .find(|fee| maybe_fee_coin.eq(fee))
         .ok_or_else(|| {
-            StdError::generic_err(format!(
+            StdError::generic_err(
                 "Not enough funds to create a pool. Check pool_creation_fee in poolmanager params."
-            ))
+                    .to_string(),
+            )
         })?;
     check_asset_infos(deps.querier, &asset_infos)?;
 

@@ -362,7 +362,7 @@ impl Helper {
             assets.mock_coins_sent(&mut self.app, sender, &self.pair_addr, SendType::Allowance);
 
         let msg = ExecuteMsg::ProvideLiquidity {
-            assets: assets.clone().to_vec(),
+            assets: assets.to_vec(),
             slippage_tolerance,
             auto_stake: None,
             receiver: None,
@@ -463,7 +463,7 @@ impl Helper {
     ) -> AnyResult<AppResponse> {
         let max_offer_coin = max_offer_asset.as_coin().unwrap();
         let pool_id = POOL_ID
-            .query(&mut self.app.wrap(), self.pair_addr.clone())
+            .query(&self.app.wrap(), self.pair_addr.clone())
             .unwrap();
         let msg = MsgSwapExactAmountOut {
             sender: sender.to_string(),
@@ -575,7 +575,7 @@ impl Helper {
             .wrap()
             .query_wasm_raw(&self.pair_addr, b"config")?
             .ok_or_else(|| StdError::generic_err("Failed to find config in storage"))?;
-        from_json(&binary)
+        from_json(binary)
     }
 
     pub fn query_lp_price(&self) -> StdResult<Decimal256> {
@@ -590,7 +590,7 @@ impl Helper {
         block_height: u64,
     ) -> StdResult<Option<Uint128>> {
         self.app.wrap().query_wasm_smart(
-            &self.pair_addr.clone(),
+            &self.pair_addr,
             &QueryMsg::AssetBalanceAt {
                 asset_info: asset_info.clone(),
                 block_height: block_height.into(),
@@ -619,7 +619,7 @@ impl Helper {
             .wrap()
             .query_wasm_smart(&self.pair_addr, &QueryMsg::Config {})?;
         let params: ConcentratedPoolParams = from_json(
-            &config_resp
+            config_resp
                 .params
                 .ok_or_else(|| StdError::generic_err("Params not found in config response!"))?,
         )?;
