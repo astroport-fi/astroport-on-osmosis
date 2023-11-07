@@ -65,7 +65,7 @@ pub fn sudo(deps: DepsMut, env: Env, msg: SudoMessage) -> Result<Response, Contr
             token_in_max_amount,
             token_out,
         ),
-        SudoMessage::SetActive { .. } => todo!("Do we need this?"),
+        SudoMessage::SetActive { .. } => unimplemented!("SetActive is not implemented"),
     }
 }
 

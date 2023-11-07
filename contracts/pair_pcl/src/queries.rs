@@ -154,7 +154,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         // Osmosis team: it was needed due to Osmosis legacy multi hop osmo swap fee reduction where
         // it needs swap fee to pass into the swap interface.
         QueryMsg::GetSwapFee {} => to_json_binary(&GetSwapFeeResponse::default()),
-        // TODO: there is no clear documentation how does it work
+        // Astroport never blocks swaps thus we always return true.
         QueryMsg::IsActive {} => to_json_binary(&IsActiveResponse { is_active: true }),
     }
 }

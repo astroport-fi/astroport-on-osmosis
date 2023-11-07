@@ -339,7 +339,6 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
 
             let resp: MsgCreateCosmWasmPoolResponse = msg.result.try_into()?;
             let cw_querier = CosmwasmpoolQuerier::new(&deps.querier);
-            // TODO: !!! this requires Osmosis to whitelist /osmosis.cosmwasmpool.v1beta1.Query/ContractInfoByPoolId stargate query
             let contract_info = cw_querier.contract_info_by_pool_id(resp.pool_id)?;
             let pair_contract = deps.api.addr_validate(&contract_info.contract_address)?;
             PAIRS.save(deps.storage, &tmp.pair_key, &pair_contract)?;
