@@ -5,11 +5,14 @@ use std::path::Path;
 use std::process::Command;
 use std::str::FromStr;
 
+use serde::Serialize;
+
 use anyhow::Result as AnyResult;
 use astroport::asset::{Asset, AssetInfo, PairInfo};
 use astroport::factory::{PairConfig, PairType};
 use astroport::pair_concentrated::ConcentratedPoolParams;
 use astroport::{factory, pair};
+use astroport_on_osmosis::pair_pcl::ExecuteMsg;
 use cosmwasm_std::{coin, coins, to_json_binary, Coin, Decimal};
 use osmosis_std::types::cosmos::bank::v1beta1::QueryBalanceRequest;
 use osmosis_std::types::cosmwasm::wasm::v1::MsgExecuteContractResponse;
@@ -26,9 +29,6 @@ use osmosis_test_tube::{
     Account, Bank, GovWithAppAccess, Module, OsmosisTestApp, PoolManager, Runner,
     RunnerExecuteResult, SigningAccount, TokenFactory, Wasm,
 };
-use serde::Serialize;
-
-use astroport_on_osmosis::pair_pcl::ExecuteMsg;
 
 fn locate_workspace_root() -> String {
     let result = Command::new("cargo")
@@ -54,7 +54,7 @@ where
 
 const FAKE_MAKER: &str = "osmo1ek9r5ulgr0cmwdwchhd87d2x4lajaucwv8p5xn";
 
-const BUILD_CONTRACTS: [&str; 2] = [
+const BUILD_CONTRACTS: &[&str] = &[
     // "astroport-pcl-osmo", // we build this contract separately to hardcode factory address
     "astroport-factory-osmosis",
     "coin-registry",
