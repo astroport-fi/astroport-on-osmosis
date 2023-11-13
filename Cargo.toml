@@ -19,7 +19,8 @@ overflow-checks = true
 strip = true
 
 [workspace.dependencies]
-astroport = { git = "https://github.com/astroport-fi/hidden_astroport_core", version = "3" }
-astroport-pcl-common = { git = "https://github.com/astroport-fi/hidden_astroport_core", version = "1" }
-astroport-circular-buffer = { git = "https://github.com/astroport-fi/hidden_astroport_core", version = "0.1" }
+astroport = { git = "https://github.com/astroport-fi/hidden_astroport_core", version = "3.7" }
+astroport-pcl-common = { git = "https://github.com/astroport-fi/hidden_astroport_core", version = "1.0.1" }
+astroport-circular-buffer = { git = "https://github.com/astroport-fi/hidden_astroport_core", version = "0.1.0" }
+astroport-native-coin-registry = "1.0.1"
 osmosis-std = "0.20.1"

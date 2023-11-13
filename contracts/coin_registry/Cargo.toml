@@ -7,4 +7,4 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-astroport-native-coin-registry = "1"
+astroport-native-coin-registry = { workspace = true }
