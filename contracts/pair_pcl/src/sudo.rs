@@ -4,7 +4,7 @@ use astroport::observation::PrecommitObservation;
 use astroport::pair::MIN_TRADE_SIZE;
 use astroport::querier::query_fee_info;
 use astroport_pcl_common::state::Precisions;
-use astroport_pcl_common::utils::{assert_max_spread, compute_offer_amount, compute_swap};
+use astroport_pcl_common::utils::{compute_offer_amount, compute_swap};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
@@ -119,19 +119,17 @@ fn swap_exact_amount_out(
     let (offer_amount, ..) = compute_offer_amount(&xs, ask_amount_dec, ask_ind, &config, &env)?;
 
     let offer_amount = offer_amount.to_uint(offer_asset_prec)?;
-    let offer_asset = pools[offer_ind].info.with_balance(offer_amount);
-
     ensure!(
-        offer_asset.amount <= token_in_max_amount,
+        offer_amount <= token_in_max_amount,
         StdError::generic_err(
-            format!("Not enough tokens to perform swap. Need {} but token_in_max_amount is {token_in_max_amount}", offer_asset.amount)
+            format!("Not enough tokens to perform swap. Need {offer_amount} but token_in_max_amount is {token_in_max_amount}")
         )
     );
 
+    let offer_asset = pools[offer_ind].info.with_balance(offer_amount);
+
     // Since PCL has dynamic fees reverse simulation is not able to predict fees upfront and applies max possible fee.
     // Pretending there was direct swap to get 100% accurate result.
-    let belief_price = Some(Decimal::from_ratio(token_in_max_amount, token_out.amount));
-    let max_spread = Some(Decimal::zero());
     let offer_asset_prec = precisions.get_precision(&offer_asset.info)?;
     let offer_asset_dec = offer_asset.to_decimal_asset(offer_asset_prec)?;
 
@@ -160,13 +158,6 @@ fn swap_exact_amount_out(
 
     let return_amount = swap_result.dy.to_uint(ask_asset_prec)?;
     let spread_amount = swap_result.spread_fee.to_uint(ask_asset_prec)?;
-    assert_max_spread(
-        belief_price,
-        max_spread,
-        offer_asset.amount,
-        return_amount,
-        spread_amount,
-    )?;
 
     let total_share = query_native_supply(&deps.querier, &config.pair_info.liquidity_token)?
         .to_decimal256(LP_TOKEN_PRECISION)?;
