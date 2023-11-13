@@ -418,12 +418,11 @@ mod testing {
         assert_eq!(err.to_string(), "Generic error: Buffer is empty");
 
         let array = (1..=30)
+            .into_iter()
             .map(|i| Observation {
-                timestamp: env.block.time.seconds() + i * 1000,
-                base_sma: Default::default(),
-                base_amount: i.into(),
-                quote_sma: Default::default(),
-                quote_amount: (i * i).into(),
+                ts: env.block.time.seconds() + i * 1000,
+                price_sma: Decimal::from_ratio(i, i * i),
+                price: Default::default(),
             })
             .collect_vec();
         buffer.push_many(&array);
@@ -467,12 +466,11 @@ mod testing {
         assert_eq!(err.to_string(), "Generic error: Buffer is empty");
 
         let array = (1..=30)
+            .into_iter()
             .map(|i| Observation {
-                timestamp: env.block.time.seconds() + i * 1000,
-                base_sma: Default::default(),
-                base_amount: i.into(),
-                quote_sma: Default::default(),
-                quote_amount: (i * i).into(),
+                ts: env.block.time.seconds() + i * 1000,
+                price: Default::default(),
+                price_sma: Decimal::from_ratio(i, i * i),
             })
             .collect_vec();
         buffer.push_many(&array);
@@ -493,7 +491,7 @@ mod testing {
                 timestamp: 124_411,
                 price: f64_to_dec(0.04098166666666694),
             },
-            query_observation(deps.as_ref(), env, OBSERVATIONS, 5589).unwrap()
+            query_observation(deps.as_ref(), env.clone(), OBSERVATIONS, 5589).unwrap()
         );
     }
 
@@ -510,19 +508,18 @@ mod testing {
         let ts = env.block.time.seconds();
 
         let array = (1..=CAPACITY * 3)
+            .into_iter()
             .map(|i| Observation {
-                timestamp: ts + i as u64 * 1000,
-                base_sma: Default::default(),
-                base_amount: (i * i).into(),
-                quote_sma: Default::default(),
-                quote_amount: i.into(),
+                ts: ts + i as u64 * 1000,
+                price: Default::default(),
+                price_sma: Decimal::from_ratio(i * i, i),
             })
             .collect_vec();
 
         for (k, obs) in array.iter().enumerate() {
             env.block.time = env.block.time.plus_seconds(1000);
 
-            buffer.push(obs);
+            buffer.push(&obs);
             buffer.commit(&mut deps.storage).unwrap();
             let k1 = k as u32 + 1;
 

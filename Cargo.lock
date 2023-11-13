@@ -45,9 +45,9 @@ checksum = "a4668cab20f66d8d020e1fbc0ebe47217433c1b6c8f2040faf858554e394ace6"
 
 [[package]]
 name = "astroport"
-version = "2.9.0"
+version = "2.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78b863a982595743e181f89540d7aaeda35c60b6b5cac9c36c9be30cf11a5ece"
+checksum = "8b9d984e989728f0b0262c24d2159d60c2b82719f6c85db6aee63b91bbdccdf4"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -60,8 +60,8 @@ dependencies = [
 
 [[package]]
 name = "astroport"
-version = "3.6.2"
-source = "git+https://github.com/astroport-fi/hidden_astroport_core#062bb4b1c9ee9ff079f97850135573a426be16bc"
+version = "3.7.0"
+source = "git+https://github.com/astroport-fi/hidden_astroport_core#1f57f183f0b6a62e81751d2e567aa1c281034d39"
 dependencies = [
  "astroport-circular-buffer",
  "cosmwasm-schema",
@@ -77,7 +77,7 @@ dependencies = [
 [[package]]
 name = "astroport-circular-buffer"
 version = "0.1.0"
-source = "git+https://github.com/astroport-fi/hidden_astroport_core#062bb4b1c9ee9ff079f97850135573a426be16bc"
+source = "git+https://github.com/astroport-fi/hidden_astroport_core#1f57f183f0b6a62e81751d2e567aa1c281034d39"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -88,9 +88,9 @@ dependencies = [
 [[package]]
 name = "astroport-factory"
 version = "1.6.0"
-source = "git+https://github.com/astroport-fi/hidden_astroport_core#062bb4b1c9ee9ff079f97850135573a426be16bc"
+source = "git+https://github.com/astroport-fi/hidden_astroport_core#1f57f183f0b6a62e81751d2e567aa1c281034d39"
 dependencies = [
- "astroport 3.6.2",
+ "astroport 3.7.0",
  "cosmwasm-schema",
  "cosmwasm-std",
  "cw-storage-plus 0.15.1",
@@ -106,7 +106,7 @@ name = "astroport-factory-osmosis"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "astroport 3.6.2",
+ "astroport 3.7.0",
  "astroport-on-osmosis",
  "astroport-pcl-osmo",
  "cosmwasm-schema",
@@ -127,7 +127,7 @@ version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "648ed6827a8f11012c0377fb60329204e8511fe46c86db3220113e70bdc57826"
 dependencies = [
- "astroport 2.9.0",
+ "astroport 2.9.1",
  "cosmwasm-schema",
  "cosmwasm-std",
  "cosmwasm-storage",
@@ -140,7 +140,7 @@ dependencies = [
 name = "astroport-on-osmosis"
 version = "1.0.0"
 dependencies = [
- "astroport 3.6.2",
+ "astroport 3.7.0",
  "cosmwasm-schema",
  "cosmwasm-std",
 ]
@@ -150,7 +150,7 @@ name = "astroport-osmo-e2e-tests"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "astroport 3.6.2",
+ "astroport 3.7.0",
  "astroport-on-osmosis",
  "cosmwasm-std",
  "osmosis-std",
@@ -162,10 +162,10 @@ dependencies = [
 
 [[package]]
 name = "astroport-pcl-common"
-version = "1.0.1"
-source = "git+https://github.com/astroport-fi/hidden_astroport_core#062bb4b1c9ee9ff079f97850135573a426be16bc"
+version = "1.1.0"
+source = "git+https://github.com/astroport-fi/hidden_astroport_core#1f57f183f0b6a62e81751d2e567aa1c281034d39"
 dependencies = [
- "astroport 3.6.2",
+ "astroport 3.7.0",
  "astroport-factory",
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -180,38 +180,23 @@ name = "astroport-pcl-osmo"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "astroport 3.6.2",
+ "astroport 3.7.0",
  "astroport-circular-buffer",
  "astroport-factory-osmosis",
  "astroport-native-coin-registry",
  "astroport-on-osmosis",
  "astroport-pcl-common",
- "astroport-token",
  "cosmwasm-schema",
  "cosmwasm-std",
  "cw-multi-test 0.16.5",
  "cw-storage-plus 0.15.1",
  "cw-utils 1.0.2",
  "cw2 1.1.1",
+ "cw20-base",
  "derivative",
  "itertools 0.11.0",
  "osmosis-std",
  "thiserror",
-]
-
-[[package]]
-name = "astroport-token"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3360383a2e585211da9a455ad57eb100578253b5d18a387f025cadd666604d99"
-dependencies = [
- "astroport 2.9.0",
- "cosmwasm-schema",
- "cosmwasm-std",
- "cw2 0.15.1",
- "cw20 0.15.1",
- "cw20-base",
- "snafu",
 ]
 
 [[package]]
@@ -785,16 +770,16 @@ dependencies = [
 
 [[package]]
 name = "cw20-base"
-version = "0.15.1"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0909c56d0c14601fbdc69382189799482799dcad87587926aec1f3aa321abc41"
+checksum = "09558f87fd3d5e4a479761051b3f98ee2fa723d9e484b5679b6058ad0eadf8f1"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
- "cw-storage-plus 0.15.1",
- "cw-utils 0.15.1",
- "cw2 0.15.1",
- "cw20 0.15.1",
+ "cw-storage-plus 1.1.0",
+ "cw-utils 1.0.2",
+ "cw2 1.1.1",
+ "cw20 1.1.1",
  "schemars",
  "semver",
  "serde",
@@ -867,12 +852,6 @@ dependencies = [
  "crypto-common",
  "subtle",
 ]
-
-[[package]]
-name = "doc-comment"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "dyn-clone"
@@ -2299,27 +2278,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f92a496fb766b417c996b9c5e57daf2f7ad3b0bebe1ccfca4856390e3d3bb67"
 dependencies = [
  "autocfg",
-]
-
-[[package]]
-name = "snafu"
-version = "0.6.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eab12d3c261b2308b0d80c26fffb58d17eba81a4be97890101f416b478c79ca7"
-dependencies = [
- "doc-comment",
- "snafu-derive",
-]
-
-[[package]]
-name = "snafu-derive"
-version = "0.6.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1508efa03c362e23817f96cde18abed596a25219a8b2c66e8db33c03543d315b"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]

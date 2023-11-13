@@ -24,12 +24,11 @@ thiserror = "1"
 osmosis-std = { workspace = true }
 
 [dev-dependencies]
-#cw-multi-test = { path = "../../../cw-multi-test", features = ["stargate"] }
 cw-multi-test = { git = "https://github.com/astroport-fi/cw-multi-test", branch = "astroport_cozy_fork", features = ["stargate"] }
 anyhow = "1"
 derivative = "2"
-astroport-native-coin-registry = "1"
+astroport-native-coin-registry = { workspace = true }
 astroport-factory = { package = "astroport-factory-osmosis", path = "../factory" }
 
-# this contract only to test cw20 is not allowed in this Astroport version
-astroport-token = "1"
+# this contract only to check that cw20 is not allowed in this Astroport version
+cw20-base = "1"
