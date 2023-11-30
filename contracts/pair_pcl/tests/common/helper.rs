@@ -210,11 +210,11 @@ impl Helper {
         test_coins: Vec<TestCoin>,
         params: ConcentratedPoolParams,
     ) -> AnyResult<Self> {
+        let wasm_keeper =
+            WasmKeeper::new().with_address_generator(HackyAddressGenerator::default());
         let mut app = BasicAppBuilder::new()
             .with_stargate(OsmosisStargate::default())
-            .with_wasm::<FailingModule<Empty, Empty, Empty>, WasmKeeper<Empty, Empty>>(
-                WasmKeeper::new_with_custom_address_generator(HackyAddressGenerator::default()),
-            )
+            .with_wasm(wasm_keeper)
             .build(|router, _, storage| {
                 router
                     .bank
