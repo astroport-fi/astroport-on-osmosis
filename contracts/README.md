@@ -1,2 +1,0 @@
-1. factory directory is a copy of `contracts/factory` from [commit](https://github.com/astroport-fi/hidden_astroport_core/commit/2beaf71a99b7d4826c2fb14076702794939df85f)
-2. pair_concentrated directory is a copy of `contracts/pair_concentrated` from [commit](https://github.com/astroport-fi/hidden_astroport_core/commit/2beaf71a99b7d4826c2fb14076702794939df85f)
