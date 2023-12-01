@@ -22,8 +22,8 @@ use astroport_pcl_common::state::Config;
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::testing::MockApi;
 use cosmwasm_std::{
-    coin, coins, from_json, to_json_binary, Addr, Coin, Decimal, Decimal256, Empty, GovMsg, IbcMsg,
-    IbcQuery, MemoryStorage, StdError, StdResult, Storage, Uint128,
+    coin, coins, from_json, to_json_binary, Addr, Api, Coin, Decimal, Decimal256, Empty, GovMsg,
+    IbcMsg, IbcQuery, MemoryStorage, StdError, StdResult, Storage, Uint128,
 };
 use cw_multi_test::{
     AddressGenerator, App, AppResponse, BankKeeper, BasicAppBuilder, Contract, ContractWrapper,
@@ -167,26 +167,22 @@ struct HackyAddressGenerator<'a> {
 }
 
 impl<'a> HackyAddressGenerator<'a> {
-    pub const CONTRACTS_COUNT: Item<'a, u64> = Item::new("wasm_contracts_count");
     pub const FACTORY_MARKER: Item<'a, ()> = Item::new("factory_marker");
 }
 
 impl<'a> AddressGenerator for HackyAddressGenerator<'a> {
-    fn next_address(&self, storage: &mut dyn Storage) -> Addr {
+    fn contract_address(
+        &self,
+        _api: &dyn Api,
+        storage: &mut dyn Storage,
+        _code_id: u64,
+        instance_id: u64,
+    ) -> AnyResult<Addr> {
         if Self::FACTORY_MARKER.may_load(storage).unwrap().is_some() {
             Self::FACTORY_MARKER.remove(storage);
-
-            Addr::unchecked(FACTORY_ADDRESS)
+            Ok(Addr::unchecked(FACTORY_ADDRESS))
         } else {
-            let count = if let Some(count) = Self::CONTRACTS_COUNT.may_load(storage).unwrap() {
-                Self::CONTRACTS_COUNT.save(storage, &(count + 1)).unwrap();
-                count + 1
-            } else {
-                Self::CONTRACTS_COUNT.save(storage, &1u64).unwrap();
-                1
-            };
-
-            Addr::unchecked(format!("contract{count}"))
+            Ok(Addr::unchecked(format!("contract{instance_id}")))
         }
     }
 }
@@ -210,11 +206,11 @@ impl Helper {
         test_coins: Vec<TestCoin>,
         params: ConcentratedPoolParams,
     ) -> AnyResult<Self> {
+        let wasm_keeper =
+            WasmKeeper::new().with_address_generator(HackyAddressGenerator::default());
         let mut app = BasicAppBuilder::new()
             .with_stargate(OsmosisStargate::default())
-            .with_wasm::<FailingModule<Empty, Empty, Empty>, WasmKeeper<Empty, Empty>>(
-                WasmKeeper::new_with_custom_address_generator(HackyAddressGenerator::default()),
-            )
+            .with_wasm(wasm_keeper)
             .build(|router, _, storage| {
                 router
                     .bank
