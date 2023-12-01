@@ -5,14 +5,11 @@ use std::path::Path;
 use std::process::Command;
 use std::str::FromStr;
 
-use serde::Serialize;
-
 use anyhow::Result as AnyResult;
 use astroport::asset::{Asset, AssetInfo, PairInfo};
 use astroport::factory::{PairConfig, PairType};
 use astroport::pair_concentrated::ConcentratedPoolParams;
 use astroport::{factory, pair};
-use astroport_on_osmosis::pair_pcl::ExecuteMsg;
 use cosmwasm_std::{coin, coins, to_json_binary, Coin, Decimal};
 use osmosis_std::types::cosmos::bank::v1beta1::QueryBalanceRequest;
 use osmosis_std::types::cosmwasm::wasm::v1::MsgExecuteContractResponse;
@@ -29,6 +26,9 @@ use osmosis_test_tube::{
     Account, Bank, GovWithAppAccess, Module, OsmosisTestApp, PoolManager, Runner,
     RunnerExecuteResult, SigningAccount, TokenFactory, Wasm,
 };
+use serde::Serialize;
+
+use astroport_on_osmosis::pair_pcl::ExecuteMsg;
 
 fn locate_workspace_root() -> String {
     let result = Command::new("cargo")
@@ -57,7 +57,6 @@ const FAKE_MAKER: &str = "osmo1ek9r5ulgr0cmwdwchhd87d2x4lajaucwv8p5xn";
 const BUILD_CONTRACTS: &[&str] = &[
     // "astroport-pcl-osmo", // we build this contract separately to hardcode factory address
     "astroport-factory-osmosis",
-    "coin-registry",
 ];
 
 fn compile_wasm(project_dir: &str, contract: &str) {
@@ -105,7 +104,8 @@ impl<'a> TestAppWrapper<'a> {
         }
 
         let target_dir = Path::new(&project_dir).join("target/wasm32-unknown-unknown/release");
-        let native_registry_wasm = target_dir.join("coin_registry.wasm");
+        let native_registry_wasm =
+            Path::new(&project_dir).join("e2e_tests/contracts/astroport_native_coin_registry.wasm");
         let factory_wasm = target_dir.join("astroport_factory_osmosis.wasm");
 
         let mut helper = Self {
@@ -165,7 +165,11 @@ impl<'a> TestAppWrapper<'a> {
             .unwrap();
 
         // Pin factory address in the PCL wasm binary
-        fs::write("../contracts/pair_pcl/src/factory_address", &helper.factory).unwrap();
+        fs::write(
+            "../contracts/pair_concentrated/src/factory_address",
+            &helper.factory,
+        )
+        .unwrap();
         compile_wasm(&project_dir, "astroport-pcl-osmo");
         println!("Storing cl pool contract...");
         let cl_pool_wasm = target_dir.join("astroport_pcl_osmo.wasm");
@@ -332,7 +336,6 @@ impl<'a> TestAppWrapper<'a> {
         let pool_infos: Vec<CosmWasmPool> = self
             .app
             .query::<_, PoolsResponse>("/osmosis.cosmwasmpool.v1beta1.Query/Pools", &query_msg)
-            // .query::<_, PoolsResponse>(PoolsRequest::TYPE_URL, &query_msg)
             .unwrap()
             .pools
             .into_iter()
@@ -426,19 +429,6 @@ impl<'a> TestAppWrapper<'a> {
             sender,
         )
     }
-
-    // pub fn give_me_money(&self, to: &str, coins: &[Coin]) {
-    //     self.bank
-    //         .send(
-    //             MsgSend {
-    //                 from_address: self.signer.address().to_string(),
-    //                 to_address: to.to_string(),
-    //                 amount: coins.into_iter().map(Into::into).collect(),
-    //             },
-    //             &self.signer,
-    //         )
-    //         .unwrap();
-    // }
 
     pub fn store_code<P>(&self, contract_path: P) -> AnyResult<u64>
     where

@@ -1,31 +1,33 @@
-#[cfg(not(feature = "library"))]
-use cosmwasm_std::entry_point;
-use cosmwasm_std::{
-    to_binary, Binary, Decimal, Decimal256, Deps, Env, StdError, StdResult, Uint128, Uint64,
-};
-use itertools::Itertools;
-
-use astroport::asset::{Asset, AssetInfo};
+use astroport::asset::{native_asset_info, Asset, AssetInfo, AssetInfoExt};
 use astroport::cosmwasm_ext::{DecimalToInteger, IntegerToDecimal};
 use astroport::observation::query_observation;
 use astroport::pair::{
     ConfigResponse, PoolResponse, ReverseSimulationResponse, SimulationResponse,
 };
-
-use astroport::pair_concentrated::{ConcentratedPoolConfig, QueryMsg};
-use astroport::querier::{query_factory_config, query_fee_info, query_supply};
-
-use crate::contract::LP_TOKEN_PRECISION;
-use crate::error::ContractError;
+use astroport::pair_concentrated::ConcentratedPoolConfig;
+use astroport::querier::{query_factory_config, query_fee_info};
 use astroport_pcl_common::state::Precisions;
 use astroport_pcl_common::utils::{
     before_swap_check, compute_offer_amount, compute_swap, get_share_in_assets,
 };
 use astroport_pcl_common::{calc_d, get_xcp};
+#[cfg(not(feature = "library"))]
+use cosmwasm_std::entry_point;
+use cosmwasm_std::{
+    to_json_binary, Binary, Decimal, Decimal256, Deps, Env, Fraction, StdError, StdResult, Uint128,
+    Uint64,
+};
+use itertools::Itertools;
 
+use astroport_on_osmosis::pair_pcl::{
+    CalcInAmtGivenOutResponse, CalcOutAmtGivenInResponse, GetSwapFeeResponse, IsActiveResponse,
+    QueryMsg, SpotPriceResponse, TotalPoolLiquidityResponse,
+};
+
+use crate::contract::LP_TOKEN_PRECISION;
+use crate::error::ContractError;
 use crate::state::{BALANCES, CONFIG, OBSERVATIONS};
-
-use crate::utils::{pool_info, query_pools};
+use crate::utils::{pool_info, query_native_supply, query_pools};
 
 /// Exposes all the queries available in the contract.
 ///
@@ -53,32 +55,107 @@ use crate::utils::{pool_info, query_pools};
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Pair {} => to_binary(&CONFIG.load(deps.storage)?.pair_info),
-        QueryMsg::Pool {} => to_binary(&query_pool(deps)?),
-        QueryMsg::Share { amount } => to_binary(
+        QueryMsg::Pair {} => to_json_binary(&CONFIG.load(deps.storage)?.pair_info),
+        QueryMsg::Pool {} => to_json_binary(&query_pool(deps)?),
+        QueryMsg::Share { amount } => to_json_binary(
             &query_share(deps, amount).map_err(|err| StdError::generic_err(err.to_string()))?,
         ),
-        QueryMsg::Simulation { offer_asset, .. } => to_binary(
-            &query_simulation(deps, env, offer_asset)
-                .map_err(|err| StdError::generic_err(format!("{err}")))?,
-        ),
-        QueryMsg::ReverseSimulation { ask_asset, .. } => to_binary(
-            &query_reverse_simulation(deps, env, ask_asset)
-                .map_err(|err| StdError::generic_err(format!("{err}")))?,
-        ),
+        QueryMsg::Simulation { offer_asset, .. } => {
+            let (sim_result, _) = query_simulation(deps, env, offer_asset)
+                .map_err(|err| StdError::generic_err(format!("{err}")))?;
+            to_json_binary(&sim_result)
+        }
+        QueryMsg::ReverseSimulation { ask_asset, .. } => {
+            let (sim_result, _) = query_reverse_simulation(deps, env, ask_asset)
+                .map_err(|err| StdError::generic_err(format!("{err}")))?;
+            to_json_binary(&sim_result)
+        }
         QueryMsg::CumulativePrices {} => Err(StdError::generic_err(
             stringify!(Not implemented. Use {"observe": {"seconds_ago": ... }} instead.),
         )),
         QueryMsg::Observe { seconds_ago } => {
-            to_binary(&query_observation(deps, env, OBSERVATIONS, seconds_ago)?)
+            to_json_binary(&query_observation(deps, env, OBSERVATIONS, seconds_ago)?)
         }
-        QueryMsg::Config {} => to_binary(&query_config(deps, env)?),
-        QueryMsg::LpPrice {} => to_binary(&query_lp_price(deps, env)?),
-        QueryMsg::ComputeD {} => to_binary(&query_compute_d(deps, env)?),
+        QueryMsg::Config {} => to_json_binary(&query_config(deps, env)?),
+        QueryMsg::LpPrice {} => to_json_binary(&query_lp_price(deps, env)?),
+        QueryMsg::ComputeD {} => to_json_binary(&query_compute_d(deps, env)?),
         QueryMsg::AssetBalanceAt {
             asset_info,
             block_height,
-        } => to_binary(&query_asset_balances_at(deps, asset_info, block_height)?),
+        } => to_json_binary(&query_asset_balances_at(deps, asset_info, block_height)?),
+
+        //
+        // OSMOSIS SPECIFIC QUERY ENDPOINTS
+        //
+        QueryMsg::GetTotalPoolLiquidity {} => {
+            let config = CONFIG.load(deps.storage)?;
+            let total_pool_liquidity = config
+                .pair_info
+                .query_pools(&deps.querier, &config.pair_info.contract_addr)?
+                .iter()
+                .map(Asset::as_coin)
+                .collect::<StdResult<_>>()?;
+            to_json_binary(&TotalPoolLiquidityResponse {
+                total_pool_liquidity,
+            })
+        }
+        QueryMsg::CalcOutAmtGivenIn { token_in, .. } => {
+            let offer_asset = native_asset_info(token_in.denom).with_balance(token_in.amount);
+            let (_, return_asset) = query_simulation(deps, env, offer_asset)
+                .map_err(|err| StdError::generic_err(format!("{err}")))?;
+
+            to_json_binary(&CalcOutAmtGivenInResponse {
+                token_out: return_asset.as_coin()?,
+            })
+        }
+        QueryMsg::CalcInAmtGivenOut { token_out, .. } => {
+            let ask_asset = native_asset_info(token_out.denom).with_balance(token_out.amount);
+            let (_, offer_asset) = query_reverse_simulation(deps, env, ask_asset)
+                .map_err(|err| StdError::generic_err(format!("{err}")))?;
+
+            to_json_binary(&CalcInAmtGivenOutResponse {
+                token_in: offer_asset.as_coin()?,
+            })
+        }
+        QueryMsg::SpotPrice {
+            quote_asset_denom,
+            base_asset_denom,
+        } => {
+            let config = CONFIG.load(deps.storage)?;
+            let pool_denoms = config
+                .pair_info
+                .asset_infos
+                .into_iter()
+                .map(|asset_info| match asset_info {
+                    AssetInfo::NativeToken { denom } => denom,
+                    AssetInfo::Token { .. } => unreachable!("Token assets are not supported"),
+                })
+                .collect_vec();
+            let price = query_observation(deps, env, OBSERVATIONS, 0)?.price;
+
+            let spot_price = if pool_denoms[0] == quote_asset_denom
+                && pool_denoms[1] == base_asset_denom
+            {
+                price
+                    .inv()
+                    .ok_or_else(|| StdError::generic_err("Price is zero"))
+            } else if pool_denoms[0] == base_asset_denom && pool_denoms[1] == quote_asset_denom {
+                Ok(price)
+            } else {
+                Err(StdError::generic_err(format!(
+                    "Invalid pool denoms {quote_asset_denom} {base_asset_denom}. Must be {} {}",
+                    pool_denoms[0], pool_denoms[1]
+                )))
+            }?;
+
+            to_json_binary(&SpotPriceResponse { spot_price })
+        }
+        // Osmosis confirmed we can safely set 0% here.
+        // Osmosis team: it was needed due to Osmosis legacy multi hop osmo swap fee reduction where
+        // it needs swap fee to pass into the swap interface.
+        QueryMsg::GetSwapFee {} => to_json_binary(&GetSwapFeeResponse::default()),
+        // Astroport never blocks swaps thus we always return true.
+        QueryMsg::IsActive {} => to_json_binary(&IsActiveResponse { is_active: true }),
     }
 }
 
@@ -109,7 +186,7 @@ fn query_share(deps: Deps, amount: Uint128) -> Result<Vec<Asset>, ContractError>
         &config,
         &precisions,
     )?;
-    let total_share = query_supply(&deps.querier, &config.pair_info.liquidity_token)?;
+    let total_share = query_native_supply(&deps.querier, &config.pair_info.liquidity_token)?;
     let refund_assets =
         get_share_in_assets(&pools, amount.saturating_sub(Uint128::one()), total_share);
 
@@ -133,7 +210,7 @@ pub fn query_simulation(
     deps: Deps,
     env: Env,
     offer_asset: Asset,
-) -> Result<SimulationResponse, ContractError> {
+) -> Result<(SimulationResponse, Asset), ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let precisions = Precisions::new(deps.storage)?;
     let offer_asset_prec = precisions.get_precision(&offer_asset.info)?;
@@ -145,7 +222,7 @@ pub fn query_simulation(
         .iter()
         .find_position(|asset| asset.info == offer_asset.info)
         .ok_or_else(|| ContractError::InvalidAsset(offer_asset_dec.info.to_string()))?;
-    let ask_ind = 1 - offer_ind;
+    let ask_ind = 1 ^ offer_ind;
     let ask_asset_prec = precisions.get_precision(&pools[ask_ind].info)?;
 
     before_swap_check(&pools, offer_asset_dec.amount)?;
@@ -162,11 +239,6 @@ pub fn query_simulation(
     if fee_info.fee_address.is_some() {
         maker_fee_share = fee_info.maker_fee_rate.into();
     }
-    // If this pool is configured to share fees
-    let mut share_fee_share = Decimal256::zero();
-    if let Some(fee_share) = config.fee_share.clone() {
-        share_fee_share = Decimal256::from_ratio(fee_share.bps, 10000u16);
-    }
 
     let swap_result = compute_swap(
         &xs,
@@ -175,14 +247,19 @@ pub fn query_simulation(
         &config,
         &env,
         maker_fee_share,
-        share_fee_share,
+        Decimal256::zero(),
     )?;
 
-    Ok(SimulationResponse {
-        return_amount: swap_result.dy.to_uint(ask_asset_prec)?,
-        spread_amount: swap_result.spread_fee.to_uint(ask_asset_prec)?,
-        commission_amount: swap_result.total_fee.to_uint(ask_asset_prec)?,
-    })
+    let return_amount = swap_result.dy.to_uint(ask_asset_prec)?;
+
+    Ok((
+        SimulationResponse {
+            return_amount,
+            spread_amount: swap_result.spread_fee.to_uint(ask_asset_prec)?,
+            commission_amount: swap_result.total_fee.to_uint(ask_asset_prec)?,
+        },
+        pools[ask_ind].info.with_balance(return_amount),
+    ))
 }
 
 /// Returns information about a reverse swap simulation.
@@ -190,7 +267,7 @@ pub fn query_reverse_simulation(
     deps: Deps,
     env: Env,
     ask_asset: Asset,
-) -> Result<ReverseSimulationResponse, ContractError> {
+) -> Result<(ReverseSimulationResponse, Asset), ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let precisions = Precisions::new(deps.storage)?;
     let ask_asset_prec = precisions.get_precision(&ask_asset.info)?;
@@ -202,24 +279,28 @@ pub fn query_reverse_simulation(
         .iter()
         .find_position(|asset| asset.info == ask_asset.info)
         .ok_or_else(|| ContractError::InvalidAsset(ask_asset.info.to_string()))?;
-    let offer_ind = 1 - ask_ind;
+    let offer_ind = 1 ^ ask_ind;
     let offer_asset_prec = precisions.get_precision(&pools[offer_ind].info)?;
 
     let xs = pools.iter().map(|asset| asset.amount).collect_vec();
     let (offer_amount, spread_amount, commission_amount) =
         compute_offer_amount(&xs, ask_asset_dec.amount, ask_ind, &config, &env)?;
 
-    Ok(ReverseSimulationResponse {
-        offer_amount: offer_amount.to_uint(offer_asset_prec)?,
-        spread_amount: spread_amount.to_uint(offer_asset_prec)?,
-        commission_amount: commission_amount.to_uint(offer_asset_prec)?,
-    })
+    let offer_amount = offer_amount.to_uint(offer_asset_prec)?;
+    Ok((
+        ReverseSimulationResponse {
+            offer_amount,
+            spread_amount: spread_amount.to_uint(offer_asset_prec)?,
+            commission_amount: commission_amount.to_uint(offer_asset_prec)?,
+        },
+        pools[offer_ind].info.with_balance(offer_amount),
+    ))
 }
 
 /// Compute the current LP token virtual price.
 pub fn query_lp_price(deps: Deps, env: Env) -> StdResult<Decimal256> {
     let config = CONFIG.load(deps.storage)?;
-    let total_lp = query_supply(&deps.querier, &config.pair_info.liquidity_token)?
+    let total_lp = query_native_supply(&deps.querier, &config.pair_info.liquidity_token)?
         .to_decimal256(LP_TOKEN_PRECISION)?;
     if !total_lp.is_zero() {
         let precisions = Precisions::new(deps.storage)?;
@@ -248,13 +329,13 @@ pub fn query_config(deps: Deps, env: Env) -> StdResult<ConfigResponse> {
         Uint128::try_from(dec256_price_scale.atomics())?,
         dec256_price_scale.decimal_places(),
     )
-    .map_err(|e| StdError::generic_err(format!("{e}")))?;
+    .map_err(|e| StdError::generic_err(e.to_string()))?;
 
     let factory_config = query_factory_config(&deps.querier, &config.factory_addr)?;
 
     Ok(ConfigResponse {
         block_time_last: 0, // keeping this field for backwards compatibility
-        params: Some(to_binary(&ConcentratedPoolConfig {
+        params: Some(to_json_binary(&ConcentratedPoolConfig {
             amp: amp_gamma.amp,
             gamma: amp_gamma.gamma,
             mid_fee: config.pool_params.mid_fee,

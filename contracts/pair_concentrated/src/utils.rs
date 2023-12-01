@@ -1,12 +1,11 @@
-use cosmwasm_std::{Addr, Decimal, Env, QuerierWrapper, StdResult, Storage, Uint128};
-
 use astroport::asset::{Asset, DecimalAsset};
-use astroport::observation::{safe_sma_buffer_not_full, safe_sma_calculation};
-use astroport::observation::{Observation, PrecommitObservation};
-use astroport::querier::query_supply;
+use astroport::observation::{
+    safe_sma_buffer_not_full, safe_sma_calculation, Observation, PrecommitObservation,
+};
 use astroport_circular_buffer::error::BufferResult;
 use astroport_circular_buffer::BufferManager;
 use astroport_pcl_common::state::{Config, Precisions};
+use cosmwasm_std::{Addr, Decimal, Env, QuerierWrapper, StdResult, Storage, Uint128};
 
 use crate::error::ContractError;
 use crate::state::OBSERVATIONS;
@@ -19,7 +18,7 @@ pub(crate) fn pool_info(
     let pools = config
         .pair_info
         .query_pools(&querier, &config.pair_info.contract_addr)?;
-    let total_share = query_supply(&querier, &config.pair_info.liquidity_token)?;
+    let total_share = query_native_supply(&querier, &config.pair_info.liquidity_token)?;
 
     Ok((pools, total_share))
 }
@@ -101,6 +100,12 @@ pub fn accumulate_swap_sizes(storage: &mut dyn Storage, env: &Env) -> BufferResu
     }
 
     Ok(())
+}
+
+pub fn query_native_supply(querier: &QuerierWrapper, contract_addr: &Addr) -> StdResult<Uint128> {
+    querier
+        .query_supply(contract_addr.as_str())
+        .map(|res| res.amount)
 }
 
 #[cfg(test)]

@@ -1,36 +1,52 @@
 #![cfg(not(tarpaulin_include))]
 
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::str::FromStr;
-
-use cosmwasm_std::{Addr, Coin, Decimal, Decimal256, StdError, Uint128};
-use itertools::{max, Itertools};
 
 use astroport::asset::{
     native_asset_info, Asset, AssetInfo, AssetInfoExt, MINIMUM_LIQUIDITY_AMOUNT,
 };
-use astroport::cosmwasm_ext::{AbsDiff, IntegerToDecimal};
+use astroport::cosmwasm_ext::AbsDiff;
 use astroport::observation::OracleObservation;
-use astroport::pair::{ExecuteMsg, PoolResponse, MAX_FEE_SHARE_BPS};
+use astroport::pair::{ExecuteMsg, PoolResponse};
 use astroport::pair_concentrated::{
-    ConcentratedPoolParams, ConcentratedPoolUpdateParams, PromoteParams, QueryMsg, UpdatePoolParams,
+    ConcentratedPoolParams, ConcentratedPoolUpdateParams, PromoteParams, UpdatePoolParams,
 };
-use astroport_mocks::cw_multi_test::{BasicApp, Executor};
-use astroport_mocks::{astroport_address, MockConcentratedPairBuilder, MockGeneratorBuilder};
-use astroport_pair_concentrated::error::ContractError;
 use astroport_pcl_common::consts::{AMP_MAX, AMP_MIN, MA_HALF_TIME_LIMITS};
 use astroport_pcl_common::error::PclError;
+use cosmwasm_std::{Addr, Decimal, Fraction, StdError, Uint128};
+use cw_multi_test::{next_block, Executor};
+use itertools::Itertools;
 
-use crate::helper::{common_pcl_params, dec_to_f64, f64_to_dec, AppExtension, Helper, TestCoin};
+use astroport_on_osmosis::pair_pcl::{
+    CalcInAmtGivenOutResponse, CalcOutAmtGivenInResponse, QueryMsg, SpotPriceResponse,
+    TotalPoolLiquidityResponse,
+};
+use astroport_pcl_osmo::error::ContractError;
+use common::helper::{dec_to_f64, f64_to_dec, AppExtension, Helper, TestCoin};
 
-mod helper;
+mod common;
+
+fn common_pcl_params() -> ConcentratedPoolParams {
+    ConcentratedPoolParams {
+        amp: f64_to_dec(40f64),
+        gamma: f64_to_dec(0.000145),
+        mid_fee: f64_to_dec(0.0026),
+        out_fee: f64_to_dec(0.0045),
+        fee_gamma: f64_to_dec(0.00023),
+        repeg_profit_threshold: f64_to_dec(0.000002),
+        min_price_scale_delta: f64_to_dec(0.000146),
+        price_scale: Decimal::one(),
+        ma_half_time: 600,
+        track_asset_balances: None,
+        fee_share: None,
+    }
+}
 
 #[test]
 fn check_observe_queries() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::cw20("USDC")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
@@ -86,16 +102,13 @@ fn check_observe_queries() {
 fn check_wrong_initialization() {
     let owner = Addr::unchecked("owner");
 
-    let params = ConcentratedPoolParams {
-        price_scale: Decimal::from_ratio(2u8, 1u8),
-        ..common_pcl_params()
-    };
+    let params = common_pcl_params();
 
-    let err = Helper::new(&owner, vec![TestCoin::native("uluna")], params.clone()).unwrap_err();
+    let err = Helper::new(&owner, vec![TestCoin::native("uosmo")], params.clone()).unwrap_err();
 
     assert_eq!(
         err.root_cause().to_string(),
-        "Generic error: asset_infos must contain exactly two elements",
+        "Generic error: asset_infos must contain two elements",
     );
 
     let mut wrong_params = params.clone();
@@ -103,7 +116,7 @@ fn check_wrong_initialization() {
 
     let err = Helper::new(
         &owner,
-        vec![TestCoin::native("uluna"), TestCoin::cw20("ASTRO")],
+        vec![TestCoin::native("uosmo"), TestCoin::native("uusd")],
         wrong_params,
     )
     .unwrap_err();
@@ -122,7 +135,7 @@ fn check_wrong_initialization() {
 
     let err = Helper::new(
         &owner,
-        vec![TestCoin::native("uluna"), TestCoin::cw20("ASTRO")],
+        vec![TestCoin::native("uosmo"), TestCoin::native("uusd")],
         wrong_params,
     )
     .unwrap_err();
@@ -141,7 +154,7 @@ fn check_wrong_initialization() {
 
     let err = Helper::new(
         &owner,
-        vec![TestCoin::native("uluna"), TestCoin::cw20("ASTRO")],
+        vec![TestCoin::native("uosmo"), TestCoin::native("uusd")],
         wrong_params,
     )
     .unwrap_err();
@@ -154,43 +167,36 @@ fn check_wrong_initialization() {
     // check instantiation with valid params
     Helper::new(
         &owner,
-        vec![TestCoin::native("uluna"), TestCoin::cw20("ASTRO")],
+        vec![TestCoin::native("uosmo"), TestCoin::native("uusd")],
         params,
     )
     .unwrap();
 }
 
 #[test]
-fn check_create_pair_with_unsupported_denom() {
+fn check_create_pair_with_cw20() {
     let owner = Addr::unchecked("owner");
 
-    let wrong_coins = vec![TestCoin::native("rc"), TestCoin::cw20("USDC")];
-    let valid_coins = vec![TestCoin::native("uluna"), TestCoin::cw20("USDC")];
+    let wrong_coins = vec![TestCoin::cw20("ASTRO"), TestCoin::native("uosmo")];
 
-    let params = ConcentratedPoolParams {
-        price_scale: Decimal::from_ratio(2u8, 1u8),
-        ..common_pcl_params()
-    };
+    let params = common_pcl_params();
 
-    let err = Helper::new(&owner, wrong_coins.clone(), params.clone()).unwrap_err();
+    let err = Helper::new(&owner, wrong_coins, params).unwrap_err();
     assert_eq!(
-        "Generic error: Invalid denom length [3,128]: rc",
-        err.root_cause().to_string()
+        err.downcast::<astroport_factory::error::ContractError>()
+            .unwrap(),
+        astroport_factory::error::ContractError::NonNativeToken {}
     );
-
-    Helper::new(&owner, valid_coins.clone(), params.clone()).unwrap();
 }
 
 #[test]
 fn provide_and_withdraw() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::cw20("USDC")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
-    let params = ConcentratedPoolParams {
-        price_scale: Decimal::from_ratio(2u8, 1u8),
-        ..common_pcl_params()
-    };
+    let mut params = common_pcl_params();
+    params.price_scale = Decimal::from_ratio(2u8, 1u8);
 
     let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
 
@@ -211,7 +217,7 @@ fn provide_and_withdraw() {
     helper.give_me_money(&wrong_assets, &user1);
     let err = helper.provide_liquidity(&user1, &wrong_assets).unwrap_err();
     assert_eq!(
-        "Generic error: Unexpected asset random-coin",
+        "Generic error: Asset random-coin is not in the pool",
         err.root_cause().to_string()
     );
 
@@ -226,7 +232,7 @@ fn provide_and_withdraw() {
         )
         .unwrap_err();
     assert_eq!(
-        "Generic error: Unexpected asset random-coin",
+        "Generic error: Asset random-coin is not in the pool",
         err.root_cause().to_string()
     );
 
@@ -245,11 +251,12 @@ fn provide_and_withdraw() {
     );
 
     // Try to provide 3 assets
+    helper.give_me_money(&[helper.assets[&test_coins[1]].with_balance(1u8)], &user1);
     let err = helper
         .provide_liquidity(
             &user1,
             &[
-                random_coin.clone(),
+                random_coin,
                 helper.assets[&test_coins[0]].with_balance(1u8),
                 helper.assets[&test_coins[1]].with_balance(1u8),
             ],
@@ -260,6 +267,10 @@ fn provide_and_withdraw() {
         err.downcast().unwrap()
     );
 
+    helper.give_me_money(
+        &[helper.assets[&test_coins[1]].with_balance(50_000_000000u128)],
+        &user1,
+    );
     // Try to provide with zero amount
     let err = helper
         .provide_liquidity(
@@ -297,15 +308,20 @@ fn provide_and_withdraw() {
     );
 
     // This is normal provision
-    helper.provide_liquidity(&user1, &assets).unwrap();
+    let user2 = Addr::unchecked("user2");
+    helper.give_me_money(&assets, &user2);
+    helper.provide_liquidity(&user2, &assets).unwrap();
 
-    assert_eq!(70710_677118, helper.token_balance(&helper.lp_token, &user1));
-    assert_eq!(0, helper.coin_balance(&test_coins[0], &user1));
-    assert_eq!(0, helper.coin_balance(&test_coins[1], &user1));
+    assert_eq!(
+        70710_677118,
+        helper.native_balance(&helper.lp_token, &user2)
+    );
+    assert_eq!(0, helper.coin_balance(&test_coins[0], &user2));
+    assert_eq!(0, helper.coin_balance(&test_coins[1], &user2));
 
     assert_eq!(
         helper
-            .query_share(helper.token_balance(&helper.lp_token, &user1))
+            .query_share(helper.native_balance(&helper.lp_token, &user2))
             .unwrap(),
         vec![
             helper.assets[&test_coins[0]].with_balance(99999998584u128),
@@ -313,48 +329,54 @@ fn provide_and_withdraw() {
         ]
     );
 
-    let user2 = Addr::unchecked("user2");
-    let assets = vec![
-        helper.assets[&test_coins[0]].with_balance(100_000_000000u128),
-        helper.assets[&test_coins[1]].with_balance(50_000_000000u128),
-    ];
-    helper.give_me_money(&assets, &user2);
-    helper.provide_liquidity(&user2, &assets).unwrap();
-    assert_eq!(
-        70710_677118 + MINIMUM_LIQUIDITY_AMOUNT.u128(),
-        helper.token_balance(&helper.lp_token, &user2)
-    );
-
-    // Changing order of assets does not matter
     let user3 = Addr::unchecked("user3");
     let assets = vec![
-        helper.assets[&test_coins[1]].with_balance(50_000_000000u128),
         helper.assets[&test_coins[0]].with_balance(100_000_000000u128),
+        helper.assets[&test_coins[1]].with_balance(50_000_000000u128),
     ];
     helper.give_me_money(&assets, &user3);
     helper.provide_liquidity(&user3, &assets).unwrap();
     assert_eq!(
         70710_677118 + MINIMUM_LIQUIDITY_AMOUNT.u128(),
-        helper.token_balance(&helper.lp_token, &user3)
+        helper.native_balance(&helper.lp_token, &user3)
+    );
+
+    // Changing order of assets does not matter
+    let user4 = Addr::unchecked("user4");
+    let assets = vec![
+        helper.assets[&test_coins[1]].with_balance(50_000_000000u128),
+        helper.assets[&test_coins[0]].with_balance(100_000_000000u128),
+    ];
+    helper.give_me_money(&assets, &user4);
+    helper.provide_liquidity(&user4, &assets).unwrap();
+    assert_eq!(
+        70710_677118 + MINIMUM_LIQUIDITY_AMOUNT.u128(),
+        helper.native_balance(&helper.lp_token, &user4)
     );
 
     // After initial provide one-sided provide is allowed
-    let user4 = Addr::unchecked("user4");
+    let user5 = Addr::unchecked("user5");
     let assets = vec![
         helper.assets[&test_coins[0]].with_balance(0u128),
         helper.assets[&test_coins[1]].with_balance(100_000_000000u128),
     ];
-    helper.give_me_money(&assets, &user4);
-    helper.provide_liquidity(&user4, &assets).unwrap();
-    // LP amount is less than for prev users as provide is imbalanced
-    assert_eq!(62217_722016, helper.token_balance(&helper.lp_token, &user4));
-
-    // One of assets may be omitted
-    let user5 = Addr::unchecked("user5");
-    let assets = vec![helper.assets[&test_coins[0]].with_balance(140_000_000000u128)];
     helper.give_me_money(&assets, &user5);
     helper.provide_liquidity(&user5, &assets).unwrap();
-    assert_eq!(57271_023590, helper.token_balance(&helper.lp_token, &user5));
+    // LP amount is less than for prev users as provide is imbalanced
+    assert_eq!(
+        62217_722016,
+        helper.native_balance(&helper.lp_token, &user5)
+    );
+
+    // One of assets may be omitted
+    let user6 = Addr::unchecked("user6");
+    let assets = vec![helper.assets[&test_coins[0]].with_balance(140_000_000000u128)];
+    helper.give_me_money(&assets, &user6);
+    helper.provide_liquidity(&user6, &assets).unwrap();
+    assert_eq!(
+        57271_023590,
+        helper.native_balance(&helper.lp_token, &user6)
+    );
 
     // check that imbalanced withdraw is currently disabled
     let withdraw_assets = vec![
@@ -362,48 +384,46 @@ fn provide_and_withdraw() {
         helper.assets[&test_coins[1]].with_balance(5_000_000000u128),
     ];
     let err = helper
-        .withdraw_liquidity(&user1, 7071_067711, withdraw_assets)
+        .withdraw_liquidity(&user2, 7071_067711, withdraw_assets)
         .unwrap_err();
     assert_eq!(
         err.root_cause().to_string(),
         "Generic error: Imbalanced withdraw is currently disabled"
     );
 
-    // user1 withdraws 1/10 of his LP tokens
+    // user2 withdraws 1/10 of his LP tokens
     helper
-        .withdraw_liquidity(&user1, 7071_067711, vec![])
+        .withdraw_liquidity(&user2, 7071_067711, vec![])
         .unwrap();
 
     assert_eq!(
         70710_677118 - 7071_067711,
-        helper.token_balance(&helper.lp_token, &user1)
+        helper.native_balance(&helper.lp_token, &user2)
     );
-    assert_eq!(9382_010960, helper.coin_balance(&test_coins[0], &user1));
-    assert_eq!(5330_688045, helper.coin_balance(&test_coins[1], &user1));
+    assert_eq!(9382_010960, helper.coin_balance(&test_coins[0], &user2));
+    assert_eq!(5330_688045, helper.coin_balance(&test_coins[1], &user2));
 
-    // user2 withdraws half
+    // user3 withdraws half
     helper
-        .withdraw_liquidity(&user2, 35355_339059, vec![])
+        .withdraw_liquidity(&user3, 35355_339059, vec![])
         .unwrap();
 
     assert_eq!(
         70710_677118 + MINIMUM_LIQUIDITY_AMOUNT.u128() - 35355_339059,
-        helper.token_balance(&helper.lp_token, &user2)
+        helper.native_balance(&helper.lp_token, &user3)
     );
-    assert_eq!(46910_055478, helper.coin_balance(&test_coins[0], &user2));
-    assert_eq!(26653_440612, helper.coin_balance(&test_coins[1], &user2));
+    assert_eq!(46910_055478, helper.coin_balance(&test_coins[0], &user3));
+    assert_eq!(26653_440612, helper.coin_balance(&test_coins[1], &user3));
 }
 
 #[test]
 fn check_imbalanced_provide() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::cw20("USDC")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
-    let mut params = ConcentratedPoolParams {
-        price_scale: Decimal::from_ratio(2u8, 1u8),
-        ..common_pcl_params()
-    };
+    let mut params = common_pcl_params();
+    params.price_scale = Decimal::from_ratio(2u8, 1u8);
 
     let mut helper = Helper::new(&owner, test_coins.clone(), params.clone()).unwrap();
 
@@ -421,7 +441,7 @@ fn check_imbalanced_provide() {
 
     assert_eq!(
         200495_366531,
-        helper.token_balance(&helper.lp_token, &user1)
+        helper.native_balance(&helper.lp_token, &user1)
     );
     assert_eq!(0, helper.coin_balance(&test_coins[0], &user1));
     assert_eq!(0, helper.coin_balance(&test_coins[1], &user1));
@@ -443,7 +463,7 @@ fn check_imbalanced_provide() {
 
     assert_eq!(
         200495_366531,
-        helper.token_balance(&helper.lp_token, &user1)
+        helper.native_balance(&helper.lp_token, &user1)
     );
     assert_eq!(0, helper.coin_balance(&test_coins[0], &user1));
     assert_eq!(0, helper.coin_balance(&test_coins[1], &user1));
@@ -453,10 +473,7 @@ fn check_imbalanced_provide() {
 fn provide_with_different_precision() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![
-        TestCoin::cw20precise("FOO", 5),
-        TestCoin::cw20precise("BAR", 6),
-    ];
+    let test_coins = vec![TestCoin::native("foo"), TestCoin::native("uosmo")];
 
     let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
@@ -476,7 +493,7 @@ fn provide_with_different_precision() {
 
         helper.provide_liquidity(&user, &assets).unwrap();
 
-        let lp_amount = helper.token_balance(&helper.lp_token, &user);
+        let lp_amount = helper.native_balance(&helper.lp_token, &user);
         assert!(
             100_000000 - lp_amount < tolerance,
             "LP token balance assert failed for {user}"
@@ -486,7 +503,7 @@ fn provide_with_different_precision() {
 
         helper.withdraw_liquidity(&user, lp_amount, vec![]).unwrap();
 
-        assert_eq!(0, helper.token_balance(&helper.lp_token, &user));
+        assert_eq!(0, helper.native_balance(&helper.lp_token, &user));
         assert!(
             100_00000 - helper.coin_balance(&test_coins[0], &user) < tolerance,
             "Withdrawn amount of coin0 assert failed for {user}"
@@ -502,10 +519,7 @@ fn provide_with_different_precision() {
 fn swap_different_precisions() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![
-        TestCoin::cw20precise("FOO", 5),
-        TestCoin::cw20precise("BAR", 6),
-    ];
+    let test_coins = vec![TestCoin::native("foo"), TestCoin::native("uosmo")];
 
     let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
@@ -536,7 +550,7 @@ fn swap_different_precisions() {
     helper.swap(&user, &offer_asset, None).unwrap();
 
     assert_eq!(0, helper.coin_balance(&test_coins[0], &user));
-    // 99_737929 x BAR tokens
+    // 99_737929 x OSMO tokens
     assert_eq!(99_737929, sim_resp.return_amount.u128());
     assert_eq!(
         sim_resp.return_amount.u128(),
@@ -548,7 +562,7 @@ fn swap_different_precisions() {
 fn check_reverse_swap() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::cw20("FOO"), TestCoin::cw20("BAR")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
@@ -576,7 +590,7 @@ fn check_reverse_swap() {
 fn check_swaps_simple() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::cw20("USDC")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
@@ -606,24 +620,6 @@ fn check_swaps_simple() {
         helper.assets[&test_coins[1]].with_balance(100_000_000000u128),
     ];
     helper.provide_liquidity(&owner, &assets).unwrap();
-
-    // trying to swap cw20 without calling Cw20::Send method
-    let err = helper
-        .app
-        .execute_contract(
-            owner.clone(),
-            helper.pair_addr.clone(),
-            &ExecuteMsg::Swap {
-                offer_asset: helper.assets[&test_coins[1]].with_balance(1u8),
-                ask_asset_info: None,
-                belief_price: None,
-                max_spread: None,
-                to: None,
-            },
-            &[],
-        )
-        .unwrap_err();
-    assert_eq!(ContractError::Cw20DirectSwap {}, err.downcast().unwrap());
 
     let d = helper.query_d().unwrap();
     assert_eq!(dec_to_f64(d), 200000f64);
@@ -688,7 +684,7 @@ fn check_swaps_with_price_update() {
     let owner = Addr::unchecked("owner");
     let half = Decimal::from_ratio(1u8, 2u8);
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::cw20("USDC")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
@@ -730,7 +726,7 @@ fn check_swaps_with_price_update() {
 fn provides_and_swaps() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::cw20("USDC")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
@@ -774,13 +770,10 @@ fn provides_and_swaps() {
 fn check_amp_gamma_change() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::cw20("USDC")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
-    let params = ConcentratedPoolParams {
-        amp: f64_to_dec(40f64),
-        gamma: f64_to_dec(0.0001),
-        ..common_pcl_params()
-    };
+    let mut params = common_pcl_params();
+    params.gamma = f64_to_dec(0.0001);
     let mut helper = Helper::new(&owner, test_coins, params).unwrap();
 
     let random_user = Addr::unchecked("random");
@@ -864,9 +857,9 @@ fn check_amp_gamma_change() {
 fn check_prices() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uusd"), TestCoin::cw20("USDX")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
-    let helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
+    let helper = Helper::new(&owner, test_coins, common_pcl_params()).unwrap();
     let err = helper.query_prices().unwrap_err();
     assert_eq!(StdError::generic_err("Querier contract error: Generic error: Not implemented.Use { \"observe\" : { \"seconds_ago\" : ... } } instead.")
     , err);
@@ -876,7 +869,7 @@ fn check_prices() {
 fn update_owner() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uusd"), TestCoin::cw20("USDX")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut helper = Helper::new(&owner, test_coins, common_pcl_params()).unwrap();
 
@@ -989,10 +982,10 @@ fn update_owner() {
 #[test]
 fn query_d_test() {
     let owner = Addr::unchecked("owner");
-    let test_coins = vec![TestCoin::native("uusd"), TestCoin::cw20("USDX")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     // create pair with test_coins
-    let helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
+    let helper = Helper::new(&owner, test_coins, common_pcl_params()).unwrap();
 
     // query current pool D value before providing any liquidity
     let err = helper.query_d().unwrap_err();
@@ -1006,7 +999,7 @@ fn query_d_test() {
 fn asset_balances_tracking_without_in_params() {
     let owner = Addr::unchecked("owner");
     let user1 = Addr::unchecked("user1");
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     // Instantiate pair without asset balances tracking
     let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
@@ -1080,14 +1073,11 @@ fn asset_balances_tracking_without_in_params() {
 #[test]
 fn asset_balances_tracking_with_in_params() {
     let owner = Addr::unchecked("owner");
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::native("uusd")];
-
-    let params = ConcentratedPoolParams {
-        track_asset_balances: Some(true),
-        ..common_pcl_params()
-    };
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     // Instantiate pair without asset balances tracking
+    let mut params = common_pcl_params();
+    params.track_asset_balances = Some(true);
     let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
 
     let assets = vec![
@@ -1155,7 +1145,7 @@ fn asset_balances_tracking_with_in_params() {
         .unwrap();
 
     assert_eq!(
-        helper.token_balance(&helper.lp_token, &owner),
+        helper.native_balance(&helper.lp_token, &owner),
         999_498998u128
     );
 
@@ -1219,12 +1209,10 @@ fn asset_balances_tracking_with_in_params() {
 fn provides_and_swaps_and_withdraw() {
     let owner = Addr::unchecked("owner");
     let half = Decimal::from_ratio(1u8, 2u8);
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::cw20("USDC")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
-    let params = ConcentratedPoolParams {
-        price_scale: Decimal::from_ratio(1u8, 2u8),
-        ..common_pcl_params()
-    };
+    let mut params = common_pcl_params();
+    params.price_scale = Decimal::from_ratio(1u8, 2u8);
     let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
 
     helper.app.next_block(1000);
@@ -1235,7 +1223,7 @@ fn provides_and_swaps_and_withdraw() {
     ];
     helper.provide_liquidity(&owner, &assets).unwrap();
 
-    // swap uluna
+    // swap uosmo
     let user = Addr::unchecked("user");
     let offer_asset = helper.assets[&test_coins[0]].with_balance(1000_000000u128);
     helper.give_me_money(&[offer_asset.clone()], &user);
@@ -1252,7 +1240,7 @@ fn provides_and_swaps_and_withdraw() {
     helper.give_me_money(&[offer_asset.clone()], &user);
     helper.swap(&user, &offer_asset, Some(half)).unwrap();
 
-    // swap uluna
+    // swap uosmo
     let offer_asset = helper.assets[&test_coins[0]].with_balance(100_000000u128);
     helper.give_me_money(&[offer_asset.clone()], &user);
     helper.swap(&user, &offer_asset, Some(half)).unwrap();
@@ -1263,7 +1251,7 @@ fn provides_and_swaps_and_withdraw() {
         .unwrap();
 
     assert_eq!(res.total_share.u128(), 141_421_356_237u128);
-    let owner_balance = helper.token_balance(&helper.lp_token, &owner);
+    let owner_balance = helper.native_balance(&helper.lp_token, &owner);
 
     helper
         .withdraw_liquidity(&owner, owner_balance, vec![])
@@ -1278,56 +1266,10 @@ fn provides_and_swaps_and_withdraw() {
 }
 
 #[test]
-fn provide_liquidity_with_autostaking_to_generator() {
-    let astroport = astroport_address();
-
-    let app = Rc::new(RefCell::new(BasicApp::new(|router, _, storage| {
-        router
-            .bank
-            .init_balance(
-                storage,
-                &astroport,
-                vec![Coin {
-                    denom: "ustake".to_owned(),
-                    amount: Uint128::new(1_000_000_000000),
-                }],
-            )
-            .unwrap();
-    })));
-
-    let generator = MockGeneratorBuilder::new(&app).instantiate();
-
-    let factory = generator.factory();
-
-    let astro_token_info = generator.astro_token_info();
-    let ustake = native_asset_info("ustake".to_owned());
-
-    let pair = MockConcentratedPairBuilder::new(&app)
-        .with_factory(&factory)
-        .with_asset(&astro_token_info)
-        .with_asset(&ustake)
-        .instantiate(None);
-
-    pair.mint_allow_provide_and_stake(
-        &astroport,
-        &[
-            astro_token_info.with_balance(1_000_000000u128),
-            ustake.with_balance(1_000_000000u128),
-        ],
-    );
-
-    assert_eq!(pair.lp_token().balance(&pair.address), Uint128::new(1000));
-    assert_eq!(
-        generator.query_deposit(&pair.lp_token(), &astroport),
-        Uint128::new(999_999000),
-    );
-}
-
-#[test]
 fn provide_withdraw_provide() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uusd"), TestCoin::native("uluna")];
+    let test_coins = vec![TestCoin::native("uusd"), TestCoin::native("uosmo")];
 
     let params = ConcentratedPoolParams {
         amp: f64_to_dec(10f64),
@@ -1351,7 +1293,7 @@ fn provide_withdraw_provide() {
 
     helper.app.next_block(600);
     // Withdraw all
-    let lp_amount = helper.token_balance(&helper.lp_token, &owner);
+    let lp_amount = helper.native_balance(&helper.lp_token, &owner);
     helper
         .withdraw_liquidity(&owner, lp_amount, vec![])
         .unwrap();
@@ -1365,14 +1307,9 @@ fn provide_withdraw_provide() {
 #[test]
 fn provide_withdraw_slippage() {
     let owner = Addr::unchecked("owner");
-
-    let test_coins = vec![TestCoin::native("uusd"), TestCoin::native("uluna")];
-
-    let params = ConcentratedPoolParams {
-        amp: f64_to_dec(10f64),
-        price_scale: Decimal::from_ratio(10u8, 1u8),
-        ..common_pcl_params()
-    };
+    let test_coins = vec![TestCoin::native("uusd"), TestCoin::native("uosmo")];
+    let mut params = common_pcl_params();
+    params.price_scale = Decimal::from_ratio(10u8, 1u8);
 
     let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
 
@@ -1423,7 +1360,7 @@ fn provide_withdraw_slippage() {
 fn test_frontrun_before_initial_provide() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uusd"), TestCoin::native("uluna")];
+    let test_coins = vec![TestCoin::native("uusd"), TestCoin::native("uosmo")];
 
     let params = ConcentratedPoolParams {
         amp: f64_to_dec(10f64),
@@ -1499,252 +1436,204 @@ fn test_frontrun_before_initial_provide() {
 }
 
 #[test]
-fn check_correct_fee_share() {
+fn test_osmosis_specific_queries() {
     let owner = Addr::unchecked("owner");
 
-    let test_coins = vec![TestCoin::native("uluna"), TestCoin::cw20("USDC")];
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
 
     let mut helper = Helper::new(&owner, test_coins.clone(), common_pcl_params()).unwrap();
 
-    let share_recipient = Addr::unchecked("share_recipient");
-    // Attempt setting fee share with max+1 fee share
-    let action = ConcentratedPoolUpdateParams::EnableFeeShare {
-        fee_share_bps: MAX_FEE_SHARE_BPS + 1,
-        fee_share_address: share_recipient.to_string(),
-    };
-    let err = helper.update_config(&owner, &action).unwrap_err();
-    assert_eq!(
-        err.downcast::<ContractError>().unwrap(),
-        ContractError::FeeShareOutOfBounds {}
-    );
-
-    // Attempt setting fee share with max+1 fee share
-    let action = ConcentratedPoolUpdateParams::EnableFeeShare {
-        fee_share_bps: 0,
-        fee_share_address: share_recipient.to_string(),
-    };
-    let err = helper.update_config(&owner, &action).unwrap_err();
-    assert_eq!(
-        err.downcast::<ContractError>().unwrap(),
-        ContractError::FeeShareOutOfBounds {}
-    );
-
-    helper.app.next_block(1000);
-
-    // Set to 5% fee share
-    let action = ConcentratedPoolUpdateParams::EnableFeeShare {
-        fee_share_bps: 1000,
-        fee_share_address: share_recipient.to_string(),
-    };
-    helper.update_config(&owner, &action).unwrap();
-
-    let config = helper.query_config().unwrap();
-    let fee_share = config.fee_share.unwrap();
-    assert_eq!(fee_share.bps, 1000u16);
-    assert_eq!(fee_share.recipient, share_recipient.to_string());
-
-    helper.app.next_block(1000);
-
-    let assets = vec![
+    let provide_assets = [
         helper.assets[&test_coins[0]].with_balance(100_000_000000u128),
         helper.assets[&test_coins[1]].with_balance(100_000_000000u128),
     ];
-    helper.provide_liquidity(&owner, &assets).unwrap();
+    helper.provide_liquidity(&owner, &provide_assets).unwrap();
 
-    helper.app.next_block(1000);
+    let offer_asset = helper.assets[&test_coins[0]].with_balance(100_000000u128);
+    let user = Addr::unchecked("user");
+    for _ in 0..10 {
+        helper.give_me_money(&[offer_asset.clone()], &user);
+        helper.swap(&user, &offer_asset, None).unwrap();
+    }
+
+    let osm_liq = helper
+        .app
+        .wrap()
+        .query_wasm_smart::<TotalPoolLiquidityResponse>(
+            &helper.pair_addr,
+            &QueryMsg::GetTotalPoolLiquidity {},
+        )
+        .unwrap()
+        .total_pool_liquidity;
+    let astro_liq = helper
+        .app
+        .wrap()
+        .query_wasm_smart::<PoolResponse>(&helper.pair_addr, &QueryMsg::Pool {})
+        .unwrap()
+        .assets
+        .into_iter()
+        .map(|a| a.as_coin().unwrap())
+        .collect_vec();
+    assert_eq!(osm_liq, astro_liq);
+
+    let osm_resp = helper
+        .app
+        .wrap()
+        .query_wasm_smart::<CalcOutAmtGivenInResponse>(
+            &helper.pair_addr,
+            &QueryMsg::CalcOutAmtGivenIn {
+                token_in: offer_asset.as_coin().unwrap(),
+                token_out_denom: "doesnt_matter".to_string(),
+                swap_fee: Default::default(),
+            },
+        )
+        .unwrap();
+    let astro_resp = helper.simulate_swap(&offer_asset, None).unwrap();
+    assert_eq!(osm_resp.token_out.amount, astro_resp.return_amount);
+
+    let osm_resp = helper
+        .app
+        .wrap()
+        .query_wasm_smart::<CalcInAmtGivenOutResponse>(
+            &helper.pair_addr,
+            &QueryMsg::CalcInAmtGivenOut {
+                token_out: offer_asset.as_coin().unwrap(),
+                token_in_denom: offer_asset.as_coin().unwrap().denom,
+                swap_fee: Default::default(),
+            },
+        )
+        .unwrap();
+    let astro_resp = helper.simulate_reverse_swap(&offer_asset, None).unwrap();
+    assert_eq!(osm_resp.token_in.amount, astro_resp.offer_amount);
+
+    let osm_resp = helper
+        .app
+        .wrap()
+        .query_wasm_smart::<SpotPriceResponse>(
+            &helper.pair_addr,
+            &QueryMsg::SpotPrice {
+                quote_asset_denom: helper.assets[&test_coins[1]].to_string(),
+                base_asset_denom: helper.assets[&test_coins[0]].to_string(),
+            },
+        )
+        .unwrap();
+    let astro_resp = helper.observe_price(0).unwrap();
+    assert_eq!(osm_resp.spot_price, astro_resp);
+
+    // query inverted price
+    let osm_resp = helper
+        .app
+        .wrap()
+        .query_wasm_smart::<SpotPriceResponse>(
+            &helper.pair_addr,
+            &QueryMsg::SpotPrice {
+                quote_asset_denom: helper.assets[&test_coins[0]].to_string(),
+                base_asset_denom: helper.assets[&test_coins[1]].to_string(),
+            },
+        )
+        .unwrap();
+    assert_eq!(osm_resp.spot_price, astro_resp.inv().unwrap());
+
+    let err = helper
+        .app
+        .wrap()
+        .query_wasm_smart::<SpotPriceResponse>(
+            &helper.pair_addr,
+            &QueryMsg::SpotPrice {
+                quote_asset_denom: "random".to_string(),
+                base_asset_denom: helper.assets[&test_coins[0]].to_string(),
+            },
+        )
+        .unwrap_err();
+    assert_eq!(
+        err,
+        StdError::generic_err(format!(
+            "Querier contract error: Generic error: Invalid pool denoms random {base}. Must be {base} {quote}",
+            quote = helper.assets[&test_coins[1]],
+            base = helper.assets[&test_coins[0]].to_string()
+        ))
+    );
+}
+
+#[test]
+fn check_reverse_swaps() {
+    let owner = Addr::unchecked("owner");
+
+    let test_coins = vec![TestCoin::native("uosmo"), TestCoin::native("uusd")];
+
+    let params = ConcentratedPoolParams {
+        track_asset_balances: Some(true),
+        ..common_pcl_params()
+    };
+    let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
+
+    let provide_assets = [
+        helper.assets[&test_coins[0]].with_balance(100_000_000000u128),
+        helper.assets[&test_coins[1]].with_balance(100_000_000000u128),
+    ];
+    helper.provide_liquidity(&owner, &provide_assets).unwrap();
 
     let user = Addr::unchecked("user");
     let offer_asset = helper.assets[&test_coins[0]].with_balance(100_000000u128);
     helper.give_me_money(&[offer_asset.clone()], &user);
-    helper.swap(&user, &offer_asset, None).unwrap();
 
-    // Check that the shared fees are sent
-    let expected_fee_share = 26081u128;
-    let recipient_balance = helper.coin_balance(&test_coins[1], &share_recipient);
-    assert_eq!(recipient_balance, expected_fee_share);
+    // exchange rate is not 1:1 thus pool is not able to perform such reverse swap
+    let ask_asset = helper.assets[&test_coins[1]].with_balance(100_000000u128);
+    let err = helper
+        .reverse_swap(&user, &ask_asset, &offer_asset)
+        .unwrap_err();
+    assert_eq!(err.root_cause().to_string(), "Generic error: Not enough tokens to perform swap. Need 100453296 but token_in_max_amount is 100000000");
 
-    let provider = Addr::unchecked("provider");
-    let assets = vec![
-        helper.assets[&test_coins[0]].with_balance(1_000_000000u128),
-        helper.assets[&test_coins[1]].with_balance(1_000_000000u128),
-    ];
-    helper.give_me_money(&assets, &provider);
-    helper.provide_liquidity(&provider, &assets).unwrap();
+    // check the user still holds their uosmo token and didn't receive uusd
+    assert_eq!(helper.coin_balance(&test_coins[0], &user), 100_000000);
+    assert_eq!(helper.coin_balance(&test_coins[1], &user), 0);
 
-    let offer_asset = helper.assets[&test_coins[1]].with_balance(100_000000u128);
-    helper.give_me_money(&[offer_asset.clone()], &user);
-    helper.swap(&user, &offer_asset, None).unwrap();
-
+    // Ask slightly less uusd
+    let ask_asset = helper.assets[&test_coins[1]].with_balance(95_000000u128);
     helper
-        .withdraw_liquidity(&provider, 999_999354, vec![])
+        .reverse_swap(&user, &ask_asset, &offer_asset)
         .unwrap();
 
-    let offer_asset = helper.assets[&test_coins[0]].with_balance(100_000000u128);
-    helper.give_me_money(&[offer_asset.clone()], &user);
-    helper.swap(&user, &offer_asset, None).unwrap();
+    // check balances. User received slightly more uusd than expected cuz PCL has dynamic fee
+    // and it can't forecast exact fee rate in reverse swaps
+    assert_eq!(helper.coin_balance(&test_coins[0], &user), 4_569430);
+    assert_eq!(helper.coin_balance(&test_coins[1], &user), 95_180600);
 
-    // Disable fee share
-    let action = ConcentratedPoolUpdateParams::DisableFeeShare {};
-    helper.update_config(&owner, &action).unwrap();
+    helper.app.update_block(next_block);
 
-    let config = helper.query_config().unwrap();
-    assert!(config.fee_share.is_none());
-}
+    // Check that asset balance is being tracked
+    let res = helper
+        .query_asset_balance_at(
+            &helper.assets[&test_coins[0]],
+            helper.app.block_info().height,
+        )
+        .unwrap();
+    assert_eq!(res.unwrap().u128(), 100095_430570);
 
-#[test]
-fn check_small_trades() {
-    let owner = Addr::unchecked("owner");
+    // make reverse swap in opposite direction
+    let user2 = Addr::unchecked("user2");
+    let offer_asset = helper.assets[&test_coins[1]].with_balance(100_000000u128);
+    helper.give_me_money(&[offer_asset.clone()], &user2);
+    let ask_asset = helper.assets[&test_coins[0]].with_balance(95_000000u128);
+    helper
+        .reverse_swap(&user2, &ask_asset, &offer_asset)
+        .unwrap();
+    assert_eq!(helper.coin_balance(&test_coins[0], &user), 4_569430);
+    assert_eq!(helper.coin_balance(&test_coins[1], &user), 95_180600);
 
-    let test_coins = vec![TestCoin::native("uusd"), TestCoin::native("uluna")];
-
-    let params = ConcentratedPoolParams {
-        price_scale: f64_to_dec(4.360000915600192),
-        ..common_pcl_params()
-    };
-
-    let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
-
-    // Fully balanced but small provide
-    let assets = vec![
-        helper.assets[&test_coins[0]].with_balance(8_000000u128),
-        helper.assets[&test_coins[1]].with_balance(1_834862u128),
-    ];
-    helper.provide_liquidity(&owner, &assets).unwrap();
-
-    // Trying to mess the last price with lowest possible swap
-    for _ in 0..1000 {
-        helper.app.next_block(30);
-        let offer_asset = helper.assets[&test_coins[1]].with_balance(1u8);
-        helper
-            .swap_full_params(&owner, &offer_asset, None, Some(Decimal::MAX))
-            .unwrap();
-    }
-
-    // Check that after price scale adjustments (even they are small) internal value is still nearly balanced
-    let config = helper.query_config().unwrap();
-    let pool = helper
-        .query_pool()
-        .unwrap()
-        .assets
-        .into_iter()
-        .map(|asset| asset.amount.to_decimal256(6u8).unwrap())
-        .collect_vec();
-
-    let ixs = [pool[0], pool[1] * config.pool_state.price_state.price_scale];
-    let relative_diff = ixs[0].abs_diff(ixs[1]) / max(&ixs).unwrap();
-
-    assert!(
-        relative_diff < Decimal256::percent(3),
-        "Internal PCL value is off. Relative_diff: {}",
-        relative_diff
-    );
-
-    // Trying to mess the last price with lowest possible provide
-    for _ in 0..1000 {
-        helper.app.next_block(30);
-        let assets = vec![helper.assets[&test_coins[1]].with_balance(1u8)];
-        helper
-            .provide_liquidity_with_slip_tolerance(&owner, &assets, Some(f64_to_dec(0.5)))
-            .unwrap();
-    }
-
-    // Check that after price scale adjustments (even they are small) internal value is still nearly balanced
-    let config = helper.query_config().unwrap();
-    let pool = helper
-        .query_pool()
-        .unwrap()
-        .assets
-        .into_iter()
-        .map(|asset| asset.amount.to_decimal256(6u8).unwrap())
-        .collect_vec();
-
-    let ixs = [pool[0], pool[1] * config.pool_state.price_state.price_scale];
-    let relative_diff = ixs[0].abs_diff(ixs[1]) / max(&ixs).unwrap();
-
-    assert!(
-        relative_diff < Decimal256::percent(3),
-        "Internal PCL value is off. Relative_diff: {}",
-        relative_diff
-    );
-}
-
-#[test]
-fn check_small_trades_18decimals() {
-    let owner = Addr::unchecked("owner");
-
-    let test_coins = vec![
-        TestCoin::cw20precise("ETH", 18),
-        TestCoin::cw20precise("USD", 18),
-    ];
-
-    let params = ConcentratedPoolParams {
-        price_scale: f64_to_dec(4.360000915600192),
-        ..common_pcl_params()
-    };
-
-    let mut helper = Helper::new(&owner, test_coins.clone(), params).unwrap();
-
-    // Fully balanced but small provide
-    let assets = vec![
-        helper.assets[&test_coins[0]].with_balance(8e18 as u128),
-        helper.assets[&test_coins[1]].with_balance(1_834862000000000000u128),
-    ];
-    helper.provide_liquidity(&owner, &assets).unwrap();
-
-    // Trying to mess the last price with lowest possible swap
-    for _ in 0..1000 {
-        helper.app.next_block(30);
-        let offer_asset = helper.assets[&test_coins[1]].with_balance(1u8);
-        helper
-            .swap_full_params(&owner, &offer_asset, None, Some(Decimal::MAX))
-            .unwrap();
-    }
-
-    // Check that after price scale adjustments (even they are small) internal value is still nearly balanced
-    let config = helper.query_config().unwrap();
-    let pool = helper
-        .query_pool()
-        .unwrap()
-        .assets
-        .into_iter()
-        .map(|asset| asset.amount.to_decimal256(6u8).unwrap())
-        .collect_vec();
-
-    let ixs = [pool[0], pool[1] * config.pool_state.price_state.price_scale];
-    let relative_diff = ixs[0].abs_diff(ixs[1]) / max(&ixs).unwrap();
-
-    assert!(
-        relative_diff < Decimal256::percent(3),
-        "Internal PCL value is off. Relative_diff: {}",
-        relative_diff
-    );
-
-    // Trying to mess the last price with lowest possible provide
-    for _ in 0..1000 {
-        helper.app.next_block(30);
-        // 0.000001 USD. minimum provide is limited to LP token precision which is 6 decimals.
-        let assets = vec![helper.assets[&test_coins[1]].with_balance(1000000000000u128)];
-        helper
-            .provide_liquidity_with_slip_tolerance(&owner, &assets, Some(f64_to_dec(0.5)))
-            .unwrap();
-    }
-
-    // Check that after price scale adjustments (even they are small) internal value is still nearly balanced
-    let config = helper.query_config().unwrap();
-    let pool = helper
-        .query_pool()
-        .unwrap()
-        .assets
-        .into_iter()
-        .map(|asset| asset.amount.to_decimal256(6u8).unwrap())
-        .collect_vec();
-
-    let ixs = [pool[0], pool[1] * config.pool_state.price_state.price_scale];
-    let relative_diff = ixs[0].abs_diff(ixs[1]) / max(&ixs).unwrap();
-
-    assert!(
-        relative_diff < Decimal256::percent(3),
-        "Internal PCL value is off. Relative_diff: {}",
-        relative_diff
+    // try to abuse reverse swap and use equal offer and ask assets
+    let user3 = Addr::unchecked("user3");
+    let offer_asset = helper.assets[&test_coins[1]].with_balance(100_000000u128);
+    helper.give_me_money(&[offer_asset.clone()], &user3);
+    let ask_asset = helper.assets[&test_coins[1]].with_balance(95_000000u128);
+    let err = helper
+        .reverse_swap(&user3, &ask_asset, &offer_asset)
+        .unwrap_err();
+    assert_eq!(
+        err.root_cause().to_string(),
+        format!(
+            "Generic error: Invalid swap: {0} to {0}",
+            offer_asset.info.to_string()
+        )
     );
 }

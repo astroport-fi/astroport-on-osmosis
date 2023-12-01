@@ -1,56 +1,60 @@
 use std::vec;
 
-#[cfg(not(feature = "library"))]
-use cosmwasm_std::entry_point;
-use cosmwasm_std::{
-    attr, from_binary, wasm_execute, wasm_instantiate, Addr, Attribute, Binary, CosmosMsg, Decimal,
-    Decimal256, DepsMut, Env, MessageInfo, Reply, Response, StdError, StdResult, SubMsg,
-    SubMsgResponse, SubMsgResult, Uint128,
-};
-use cw2::{get_contract_version, set_contract_version};
-use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg, MinterResponse};
-use cw_utils::parse_instantiate_response_data;
-use itertools::Itertools;
-
 use astroport::asset::AssetInfoExt;
 use astroport::asset::{
-    addr_opt_validate, format_lp_token_name, token_asset, Asset, AssetInfo, CoinsExt,
-    Decimal256Ext, PairInfo, MINIMUM_LIQUIDITY_AMOUNT,
+    addr_opt_validate, Asset, AssetInfo, CoinsExt, Decimal256Ext, PairInfo,
+    MINIMUM_LIQUIDITY_AMOUNT,
 };
 use astroport::common::{claim_ownership, drop_ownership_proposal, propose_new_owner};
 use astroport::cosmwasm_ext::{AbsDiff, DecimalToInteger, IntegerToDecimal};
 use astroport::factory::PairType;
 use astroport::observation::{PrecommitObservation, OBSERVATIONS_SIZE};
-use astroport::pair::{
-    Cw20HookMsg, ExecuteMsg, FeeShareConfig, InstantiateMsg, MAX_FEE_SHARE_BPS, MIN_TRADE_SIZE,
-};
+use astroport::pair::{InstantiateMsg, MIN_TRADE_SIZE};
 use astroport::pair_concentrated::{
-    ConcentratedPoolParams, ConcentratedPoolUpdateParams, MigrateMsg, UpdatePoolParams,
+    ConcentratedPoolParams, ConcentratedPoolUpdateParams, UpdatePoolParams,
 };
-use astroport::querier::{query_factory_config, query_fee_info, query_supply};
-use astroport::token::InstantiateMsg as TokenInstantiateMsg;
+use astroport::querier::{query_factory_config, query_fee_info};
 use astroport_circular_buffer::BufferManager;
 use astroport_pcl_common::state::{
     AmpGamma, Config, PoolParams, PoolState, Precisions, PriceState,
 };
 use astroport_pcl_common::utils::{
     assert_max_spread, assert_slippage_tolerance, before_swap_check, calc_provide_fee,
-    check_asset_infos, check_assets, check_cw20_in_pool, check_pair_registered, compute_swap,
-    get_share_in_assets, mint_liquidity_token_message,
+    check_assets, check_pair_registered, compute_swap, get_share_in_assets,
 };
 use astroport_pcl_common::{calc_d, get_xcp};
+#[cfg(not(feature = "library"))]
+use cosmwasm_std::entry_point;
+use cosmwasm_std::{
+    attr, coin, ensure, from_json, to_json_binary, Addr, Binary, Decimal, Decimal256, DepsMut, Env,
+    MessageInfo, Reply, Response, StdError, StdResult, SubMsg, Uint128,
+};
+use cw2::set_contract_version;
+use cw_utils::must_pay;
+use itertools::Itertools;
+use osmosis_std::types::osmosis::poolmanager::v1beta1::{MsgSwapExactAmountIn, SwapAmountInRoute};
+use osmosis_std::types::osmosis::tokenfactory::v1beta1::{
+    MsgBurn, MsgCreateDenom, MsgCreateDenomResponse, MsgMint,
+};
+
+use astroport_on_osmosis::pair_pcl::{ExecuteMsg, SwapExactAmountInResponseData};
 
 use crate::error::ContractError;
-use crate::migration::migrate_config;
-use crate::state::{BALANCES, CONFIG, OBSERVATIONS, OWNERSHIP_PROPOSAL};
-use crate::utils::{accumulate_swap_sizes, query_pools};
+use crate::state::{
+    SwapParams, BALANCES, CONFIG, OBSERVATIONS, OWNERSHIP_PROPOSAL, POOL_ID, SWAP_PARAMS,
+};
+use crate::utils::{accumulate_swap_sizes, query_native_supply, query_pools};
 
 /// Contract name that is used for migration.
 const CONTRACT_NAME: &str = env!("CARGO_PKG_NAME");
 /// Contract version that is used for migration.
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-/// A `reply` call code ID used for sub-messages.
-const INSTANTIATE_TOKEN_REPLY_ID: u64 = 1;
+/// Hardcoded factory address
+const FACTORY_ADDRESS: &str = include_str!("factory_address");
+/// Tokenfactory LP token subdenom
+const LP_SUBDENOM: &str = "astroport/share";
+/// Reply ID for create denom reply
+const CREATE_DENOM_REPLY_ID: u64 = 1;
 /// An LP token's precision.
 pub(crate) const LP_TOKEN_PRECISION: u8 = 6;
 
@@ -62,25 +66,47 @@ pub fn instantiate(
     _info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
-    if msg.asset_infos.len() != 2 {
-        return Err(StdError::generic_err("asset_infos must contain exactly two elements").into());
+    ensure!(
+        msg.asset_infos.len() == 2,
+        StdError::generic_err("asset_infos must contain two elements")
+    );
+    let denoms = msg
+        .asset_infos
+        .iter()
+        .filter_map(|asset_info| match asset_info {
+            AssetInfo::Token { .. } => None,
+            AssetInfo::NativeToken { denom } => Some(denom),
+        })
+        .collect_vec();
+    ensure!(
+        denoms.len() == 2,
+        StdError::generic_err("CW20 tokens are not supported")
+    );
+
+    // Check that all denoms exist on chain.
+    // This query requires a chain to run cosmwasm VM >= 1.1
+    for denom in denoms {
+        deps.querier
+            .query_supply(denom)
+            .map_err(|_| StdError::generic_err(format!("Denom {denom} doesn't exist on chain")))?;
     }
 
-    check_asset_infos(deps.api, &msg.asset_infos)?;
-
-    let params: ConcentratedPoolParams = from_binary(
+    let params: ConcentratedPoolParams = from_json(
         &msg.init_params
             .ok_or(ContractError::InitParamsNotFound {})?,
     )?;
-
-    if params.price_scale.is_zero() {
-        return Err(StdError::generic_err("Initial price scale can not be zero").into());
-    }
+    ensure!(
+        !params.price_scale.is_zero(),
+        StdError::generic_err("Initial price scale can not be zero")
+    );
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    let factory_addr = deps.api.addr_validate(&msg.factory_addr)?;
-
+    // We pin factory address into wasm binary to prevent using Astroport PCL pools on Osmosis without
+    // paying fees to Astroport protocol.
+    // Users are discouraged from instantiating PCL pools using usual Osmosis tools as such pool won't be included
+    // in Astroport routing as well as swap and withdraw endpoints will be broken forever.
+    let factory_addr = Addr::unchecked(FACTORY_ADDRESS);
     Precisions::store_precisions(deps.branch(), &msg.asset_infos, &factory_addr)?;
 
     let mut pool_params = PoolParams::default();
@@ -108,11 +134,14 @@ pub fn instantiate(
         },
     };
 
+    // NOTE: we are keeping Config as general as possible across all PCL implementations.
+    // However, liquidity_token on osmosis is not a cw20 contract, but a native token.
+    // Addr::unchecked() is a little hack but devs shouldn't consider it as a cw20 contract on Osmosis.
     let config = Config {
         pair_info: PairInfo {
             contract_addr: env.contract.address.clone(),
             liquidity_token: Addr::unchecked(""),
-            asset_infos: msg.asset_infos.clone(),
+            asset_infos: msg.asset_infos,
             pair_type: PairType::Custom("concentrated".to_string()),
         },
         factory_addr,
@@ -133,90 +162,50 @@ pub fn instantiate(
 
     BufferManager::init(deps.storage, OBSERVATIONS, OBSERVATIONS_SIZE)?;
 
-    let token_name = format_lp_token_name(&msg.asset_infos, &deps.querier)?;
-
-    // Create LP token
-    let sub_msg = SubMsg::reply_on_success(
-        wasm_instantiate(
-            msg.token_code_id,
-            &TokenInstantiateMsg {
-                name: token_name,
-                symbol: "uLP".to_string(),
-                decimals: LP_TOKEN_PRECISION,
-                initial_balances: vec![],
-                mint: Some(MinterResponse {
-                    minter: env.contract.address.to_string(),
-                    cap: None,
-                }),
-                marketing: None,
-            },
-            vec![],
-            String::from("Astroport LP token"),
-        )?,
-        INSTANTIATE_TOKEN_REPLY_ID,
+    // create lp denom
+    let msg_create_lp_denom = SubMsg::reply_on_success(
+        MsgCreateDenom {
+            sender: env.contract.address.to_string(),
+            subdenom: LP_SUBDENOM.to_owned(),
+        },
+        CREATE_DENOM_REPLY_ID,
     );
 
-    Ok(Response::new().add_submessage(sub_msg).add_attribute(
-        "asset_balances_tracking".to_owned(),
-        if config.track_asset_balances {
-            "enabled"
-        } else {
-            "disabled"
-        }
-        .to_owned(),
-    ))
+    Ok(Response::new()
+        .add_submessage(msg_create_lp_denom)
+        .add_attribute(
+            "asset_balances_tracking",
+            if config.track_asset_balances {
+                "enabled"
+            } else {
+                "disabled"
+            },
+        ))
 }
 
-/// The entry point to the contract for processing replies from submessages.
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
-    match msg {
-        Reply {
-            id: INSTANTIATE_TOKEN_REPLY_ID,
-            result:
-                SubMsgResult::Ok(SubMsgResponse {
-                    data: Some(data), ..
-                }),
-        } => {
-            let mut config = CONFIG.load(deps.storage)?;
+    match msg.id {
+        CREATE_DENOM_REPLY_ID => {
+            let MsgCreateDenomResponse { new_token_denom } = msg.result.try_into()?;
+            CONFIG.update(deps.storage, |mut config| {
+                if config.pair_info.liquidity_token.as_str().is_empty() {
+                    config.pair_info.liquidity_token = Addr::unchecked(&new_token_denom);
+                    Ok(config)
+                } else {
+                    Err(StdError::generic_err(
+                        "Liquidity token denom is already set",
+                    ))
+                }
+            })?;
 
-            if config.pair_info.liquidity_token != Addr::unchecked("") {
-                return Err(ContractError::Unauthorized {});
-            }
-
-            let init_response = parse_instantiate_response_data(data.as_slice())
-                .map_err(|e| StdError::generic_err(format!("{e}")))?;
-            config.pair_info.liquidity_token =
-                deps.api.addr_validate(&init_response.contract_address)?;
-            CONFIG.save(deps.storage, &config)?;
-            Ok(Response::new()
-                .add_attribute("liquidity_token_addr", config.pair_info.liquidity_token))
+            Ok(Response::new().add_attribute("lp_denom", new_token_denom))
         }
-        _ => Err(ContractError::FailedToParseReply {}),
+        _ => Err(StdError::generic_err(format!("Unknown reply id: {}", msg.id)).into()),
     }
 }
 
 /// Exposes all the execute functions available in the contract.
-///
-/// ## Variants
-/// * **ExecuteMsg::UpdateConfig { params: Binary }** Not supported.
-///
-/// * **ExecuteMsg::Receive(msg)** Receives a message of type [`Cw20ReceiveMsg`] and processes
-/// it depending on the received template.
-///
-/// * **ExecuteMsg::ProvideLiquidity {
-///             assets,
-///             slippage_tolerance,
-///             auto_stake,
-///             receiver,
-///         }** Provides liquidity in the pair with the specified input parameters.
-///
-/// * **ExecuteMsg::Swap {
-///             offer_asset,
-///             belief_price,
-///             max_spread,
-///             to,
-///         }** Performs a swap operation with the specified parameters.
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
     deps: DepsMut,
@@ -224,55 +213,25 @@ pub fn execute(
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
-    let config = CONFIG.load(deps.storage)?;
-
     match msg {
-        ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
+        ExecuteMsg::SetPoolId { pool_id } => set_pool_id(deps, info, pool_id),
         ExecuteMsg::ProvideLiquidity {
             assets,
             slippage_tolerance,
-            auto_stake,
             receiver,
-        } => provide_liquidity(
-            deps,
-            env,
-            info,
-            assets,
-            slippage_tolerance,
-            auto_stake,
-            receiver,
-        ),
+            ..
+        } => provide_liquidity(deps, env, info, assets, slippage_tolerance, receiver),
         ExecuteMsg::Swap {
             offer_asset,
             belief_price,
             max_spread,
             to,
             ..
-        } => {
-            offer_asset.info.check(deps.api)?;
-            if !offer_asset.is_native_token() {
-                return Err(ContractError::Cw20DirectSwap {});
-            }
-            offer_asset.assert_sent_native_token_balance(&info)?;
-
-            if !config.pair_info.asset_infos.contains(&offer_asset.info) {
-                return Err(ContractError::InvalidAsset(offer_asset.info.to_string()));
-            }
-
-            let to_addr = addr_opt_validate(deps.api, &to)?;
-
-            swap(
-                deps,
-                env,
-                info.sender,
-                offer_asset,
-                belief_price,
-                max_spread,
-                to_addr,
-            )
-        }
+        } => execute_swap(deps, env, info, offer_asset, belief_price, max_spread, to),
+        ExecuteMsg::WithdrawLiquidity { assets } => withdraw_liquidity(deps, env, info, assets),
         ExecuteMsg::UpdateConfig { params } => update_config(deps, env, info, params),
         ExecuteMsg::ProposeNewOwner { owner, expires_in } => {
+            let config = CONFIG.load(deps.storage)?;
             let factory_config = query_factory_config(&deps.querier, config.factory_addr)?;
 
             propose_new_owner(
@@ -287,6 +246,7 @@ pub fn execute(
             .map_err(Into::into)
         }
         ExecuteMsg::DropOwnershipProposal {} => {
+            let config = CONFIG.load(deps.storage)?;
             let factory_config = query_factory_config(&deps.querier, config.factory_addr)?;
 
             drop_ownership_proposal(
@@ -311,47 +271,20 @@ pub fn execute(
     }
 }
 
-/// Receives a message of type [`Cw20ReceiveMsg`] and processes it depending on the received template.
-///
-/// * **cw20_msg** CW20 receive message to process.
-fn receive_cw20(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    cw20_msg: Cw20ReceiveMsg,
-) -> Result<Response, ContractError> {
-    match from_binary(&cw20_msg.msg)? {
-        Cw20HookMsg::Swap {
-            belief_price,
-            max_spread,
-            to,
-            ..
-        } => {
-            let config = CONFIG.load(deps.storage)?;
-
-            // Only asset contract can execute this message
-            check_cw20_in_pool(&config, &info.sender)?;
-
-            let to_addr = addr_opt_validate(deps.api, &to)?;
-            swap(
-                deps,
-                env,
-                Addr::unchecked(cw20_msg.sender),
-                token_asset(info.sender, cw20_msg.amount),
-                belief_price,
-                max_spread,
-                to_addr,
-            )
-        }
-        Cw20HookMsg::WithdrawLiquidity { assets } => withdraw_liquidity(
-            deps,
-            env,
-            info,
-            Addr::unchecked(cw20_msg.sender),
-            cw20_msg.amount,
-            assets,
-        ),
+fn set_pool_id(deps: DepsMut, info: MessageInfo, pool_id: u64) -> Result<Response, ContractError> {
+    if info.sender.as_str() != FACTORY_ADDRESS {
+        return Err(ContractError::Unauthorized {});
     }
+
+    POOL_ID.may_load(deps.storage)?.map_or_else(
+        || {
+            POOL_ID.save(deps.storage, &pool_id)?;
+            Ok(())
+        },
+        |_| Err(ContractError::PoolIdAlreadySet {}),
+    )?;
+
+    Ok(Response::new().add_attribute("set_pool_id", pool_id.to_string()))
 }
 
 /// Provides liquidity in the pair with the specified input parameters.
@@ -366,19 +299,17 @@ fn receive_cw20(
 ///
 /// * **receiver** is an optional parameter which defines the receiver of the LP tokens.
 /// If no custom receiver is specified, the pair will mint LP tokens for the function caller.
-///
-/// NOTE - the address that wants to provide liquidity should approve the pair contract to pull its relevant tokens.
 pub fn provide_liquidity(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
     mut assets: Vec<Asset>,
     slippage_tolerance: Option<Decimal>,
-    auto_stake: Option<bool>,
     receiver: Option<String>,
 ) -> Result<Response, ContractError> {
-    let mut config = CONFIG.load(deps.storage)?;
+    check_assets(deps.api, &assets)?;
 
+    let mut config = CONFIG.load(deps.storage)?;
     if !check_pair_registered(
         deps.querier,
         &config.factory_addr,
@@ -412,8 +343,6 @@ pub fn provide_liquidity(
         }
     }
 
-    check_assets(deps.api, &assets)?;
-
     info.funds
         .assert_coins_properly_sent(&assets, &config.pair_info.asset_infos)?;
 
@@ -430,7 +359,7 @@ pub fn provide_liquidity(
         Decimal256::with_precision(assets[1].amount, precisions.get_precision(&assets[1].info)?)?,
     ];
 
-    let total_share = query_supply(&deps.querier, &config.pair_info.liquidity_token)?
+    let total_share = query_native_supply(&deps.querier, &config.pair_info.liquidity_token)?
         .to_decimal256(LP_TOKEN_PRECISION)?;
 
     // Initial provide can not be one-sided
@@ -440,27 +369,13 @@ pub fn provide_liquidity(
 
     let mut messages = vec![];
     for (i, pool) in pools.iter_mut().enumerate() {
-        // If the asset is a token contract, then we need to execute a TransferFrom msg to receive assets
         match &pool.info {
-            AssetInfo::Token { contract_addr } => {
-                if !deposits[i].is_zero() {
-                    messages.push(CosmosMsg::Wasm(wasm_execute(
-                        contract_addr,
-                        &Cw20ExecuteMsg::TransferFrom {
-                            owner: info.sender.to_string(),
-                            recipient: env.contract.address.to_string(),
-                            amount: deposits[i]
-                                .to_uint(precisions.get_precision(&assets[i].info)?)?,
-                        },
-                        vec![],
-                    )?))
-                }
-            }
             AssetInfo::NativeToken { .. } => {
                 // If the asset is native token, the pool balance is already increased
                 // To calculate the total amount of deposits properly, we should subtract the user deposit from the pool
                 pool.amount = pool.amount.checked_sub(deposits[i])?;
             }
+            AssetInfo::Token { .. } => unreachable!("Token assets are not supported"),
         }
     }
 
@@ -476,23 +391,25 @@ pub fn provide_liquidity(
 
     let share = if total_share.is_zero() {
         let xcp = get_xcp(new_d, config.pool_state.price_state.price_scale);
-        let mint_amount = xcp
-            .checked_sub(MINIMUM_LIQUIDITY_AMOUNT.to_decimal256(LP_TOKEN_PRECISION)?)
-            .map_err(|_| ContractError::MinimumLiquidityAmountError {})?;
-
-        messages.extend(mint_liquidity_token_message(
-            deps.querier,
-            &config,
-            &env.contract.address,
-            &env.contract.address,
-            MINIMUM_LIQUIDITY_AMOUNT,
-            false,
-        )?);
+        let mint_amount =
+            xcp.saturating_sub(MINIMUM_LIQUIDITY_AMOUNT.to_decimal256(LP_TOKEN_PRECISION)?);
 
         // share cannot become zero after minimum liquidity subtraction
         if mint_amount.is_zero() {
             return Err(ContractError::MinimumLiquidityAmountError {});
         }
+
+        messages.push(MsgMint {
+            sender: env.contract.address.to_string(),
+            amount: Some(
+                coin(
+                    MINIMUM_LIQUIDITY_AMOUNT.u128(),
+                    config.pair_info.liquidity_token.to_string(),
+                )
+                .into(),
+            ),
+            mint_to_address: env.contract.address.to_string(),
+        });
 
         config.pool_state.price_state.xcp_profit_real = Decimal256::one();
         config.pool_state.price_state.xcp_profit = Decimal256::one();
@@ -546,15 +463,17 @@ pub fn provide_liquidity(
 
     // Mint LP tokens for the sender or for the receiver (if set)
     let receiver = addr_opt_validate(deps.api, &receiver)?.unwrap_or_else(|| info.sender.clone());
-    let auto_stake = auto_stake.unwrap_or(false);
-    messages.extend(mint_liquidity_token_message(
-        deps.querier,
-        &config,
-        &env.contract.address,
-        &receiver,
-        share_uint128,
-        auto_stake,
-    )?);
+    messages.push(MsgMint {
+        sender: env.contract.address.to_string(),
+        amount: Some(
+            coin(
+                share_uint128.u128(),
+                config.pair_info.liquidity_token.to_string(),
+            )
+            .into(),
+        ),
+        mint_to_address: receiver.to_string(),
+    });
 
     if config.track_asset_balances {
         for (i, pool) in pools.iter().enumerate() {
@@ -586,24 +505,20 @@ pub fn provide_liquidity(
 
 /// Withdraw liquidity from the pool.
 ///
-/// * **sender** address that will receive assets back from the pair contract
-///
-/// * **amount** amount of provided LP tokens
-///
 /// * **assets** defines number of coins a user wants to withdraw per each asset.
-fn withdraw_liquidity(
+///
+/// * **receiver** address that will receive assets back from the pair contract
+pub fn withdraw_liquidity(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    sender: Addr,
-    amount: Uint128,
     assets: Vec<Asset>,
 ) -> Result<Response, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
+    let share_denom = config.pair_info.liquidity_token.as_str();
 
-    if info.sender != config.pair_info.liquidity_token {
-        return Err(ContractError::Unauthorized {});
-    }
+    // Ensure correct LP tokens are sent
+    let amount = must_pay(&info, share_denom)?;
 
     let precisions = Precisions::new(deps.storage)?;
     let pools = query_pools(
@@ -613,7 +528,7 @@ fn withdraw_liquidity(
         &precisions,
     )?;
 
-    let total_share = query_supply(&deps.querier, &config.pair_info.liquidity_token)?;
+    let total_share = query_native_supply(&deps.querier, &config.pair_info.liquidity_token)?;
     let mut messages = vec![];
 
     let refund_assets = if assets.is_empty() {
@@ -639,11 +554,7 @@ fn withdraw_liquidity(
         .into_iter()
         .map(|asset| {
             let prec = precisions.get_precision(&asset.info).unwrap();
-
-            Ok(Asset {
-                info: asset.info,
-                amount: asset.amount.to_uint(prec)?,
-            })
+            asset.into_asset(prec)
         })
         .collect::<StdResult<Vec<_>>>()?;
 
@@ -651,15 +562,15 @@ fn withdraw_liquidity(
         refund_assets
             .iter()
             .cloned()
-            .map(|asset| asset.into_msg(&sender))
+            .map(|asset| asset.into_msg(&info.sender))
             .collect::<StdResult<Vec<_>>>()?,
     );
     messages.push(
-        wasm_execute(
-            &config.pair_info.liquidity_token,
-            &Cw20ExecuteMsg::Burn { amount },
-            vec![],
-        )?
+        MsgBurn {
+            sender: env.contract.address.to_string(),
+            amount: Some(coin(amount.u128(), share_denom).into()),
+            burn_from_address: env.contract.address.to_string(), // pair contract itself already holding these tokens
+        }
         .into(),
     );
 
@@ -681,14 +592,68 @@ fn withdraw_liquidity(
 
     Ok(Response::new().add_messages(messages).add_attributes(vec![
         attr("action", "withdraw_liquidity"),
-        attr("sender", sender),
+        attr("receiver", info.sender),
         attr("withdrawn_share", amount),
         attr("refund_assets", refund_assets.iter().join(", ")),
     ]))
 }
 
-/// Performs an swap operation with the specified parameters. The trader must approve the
-/// pool contract to transfer offer assets from their wallet.
+/// Performs a swap operation with the specified parameters.
+///
+/// From external perspective this function behaves in the same way as in other Astroport pairs.
+/// However, internally it forwards swap request to the Osmosis DEX module.
+pub fn execute_swap(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    offer_asset: Asset,
+    belief_price: Option<Decimal>,
+    max_spread: Option<Decimal>,
+    to: Option<String>,
+) -> Result<Response, ContractError> {
+    offer_asset.assert_sent_native_token_balance(&info)?;
+
+    let config = CONFIG.load(deps.storage)?;
+    if !config.pair_info.asset_infos.contains(&offer_asset.info) {
+        return Err(ContractError::InvalidAsset(offer_asset.info.to_string()));
+    }
+
+    let (offer_ind, _) = config
+        .pair_info
+        .asset_infos
+        .iter()
+        .find_position(|asset| asset.equal(&offer_asset.info))
+        .unwrap();
+    let token_out_denom = config.pair_info.asset_infos[1 ^ offer_ind].to_string();
+
+    SWAP_PARAMS.save(
+        deps.storage,
+        &SwapParams {
+            belief_price,
+            max_spread,
+            sender: info.sender,
+            to: addr_opt_validate(deps.api, &to)?,
+        },
+    )?;
+    let dispatch_swap_msg = MsgSwapExactAmountIn {
+        sender: env.contract.address.to_string(),
+        routes: vec![SwapAmountInRoute {
+            // If for some reason pool id was not set on instantiation any swap will fail which is totally safe.
+            // Pool contract must know its pool id in Osmosis DEX module.
+            pool_id: POOL_ID.load(deps.storage)?,
+            // This is not needed as we currently support only pairs. However, we define out denom just for clarity.
+            token_out_denom,
+        }],
+        token_in: Some(offer_asset.as_coin()?.into()),
+        // We don't care about this field as all necessary parameters are passed through SWAP_PARAMS state
+        token_out_min_amount: "1".to_string(),
+    };
+    Ok(Response::new()
+        .add_attribute("action", "dispatch_swap")
+        .add_message(dispatch_swap_msg))
+}
+
+/// Performs an swap operation with the specified parameters.
 ///
 /// * **sender** is the sender of the swap operation.
 ///
@@ -699,7 +664,7 @@ fn withdraw_liquidity(
 /// * **max_spread** sets the maximum spread of the swap operation.
 ///
 /// * **to** sets the recipient of the swap operation.
-fn swap(
+pub fn internal_swap(
     deps: DepsMut,
     env: Env,
     sender: Addr,
@@ -722,6 +687,7 @@ fn swap(
     let ask_ind = 1 ^ offer_ind;
     let ask_asset_prec = precisions.get_precision(&pools[ask_ind].info)?;
 
+    // Offer pool must have offer amount in it. We need to subtract it from the pool balance
     pools[offer_ind].amount -= offer_asset_dec.amount;
 
     before_swap_check(&pools, offer_asset_dec.amount)?;
@@ -738,11 +704,6 @@ fn swap(
     if fee_info.fee_address.is_some() {
         maker_fee_share = fee_info.maker_fee_rate.into();
     }
-    // If this pool is configured to share fees
-    let mut share_fee_share = Decimal256::zero();
-    if let Some(fee_share) = config.fee_share.clone() {
-        share_fee_share = Decimal256::from_ratio(fee_share.bps, 10000u16);
-    }
 
     let swap_result = compute_swap(
         &xs,
@@ -751,10 +712,10 @@ fn swap(
         &config,
         &env,
         maker_fee_share,
-        share_fee_share,
+        Decimal256::zero(),
     )?;
     xs[offer_ind] += offer_asset_dec.amount;
-    xs[ask_ind] -= swap_result.dy + swap_result.maker_fee + swap_result.share_fee;
+    xs[ask_ind] -= swap_result.dy + swap_result.maker_fee;
 
     let return_amount = swap_result.dy.to_uint(ask_asset_prec)?;
     let spread_amount = swap_result.spread_fee.to_uint(ask_asset_prec)?;
@@ -766,7 +727,7 @@ fn swap(
         spread_amount,
     )?;
 
-    let total_share = query_supply(&deps.querier, &config.pair_info.liquidity_token)?
+    let total_share = query_native_supply(&deps.querier, &config.pair_info.liquidity_token)?
         .to_decimal256(LP_TOKEN_PRECISION)?;
 
     // Skip very small trade sizes which could significantly mess up the price due to rounding errors,
@@ -785,23 +746,11 @@ fn swap(
 
     let receiver = to.unwrap_or_else(|| sender.clone());
 
-    let mut messages = vec![Asset {
-        info: pools[ask_ind].info.clone(),
-        amount: return_amount,
-    }
-    .into_msg(&receiver)?];
+    let mut messages = vec![pools[ask_ind]
+        .info
+        .with_balance(return_amount)
+        .into_msg(&receiver)?];
 
-    // Send the shared fee
-    let mut fee_share_amount = Uint128::zero();
-    if let Some(fee_share) = config.fee_share.clone() {
-        fee_share_amount = swap_result.share_fee.to_uint(ask_asset_prec)?;
-        if !fee_share_amount.is_zero() {
-            let fee = pools[ask_ind].info.with_balance(fee_share_amount);
-            messages.push(fee.into_msg(fee_share.recipient)?);
-        }
-    }
-
-    // Send the maker fee
     let mut maker_fee = Uint128::zero();
     if let Some(fee_address) = fee_info.fee_address {
         maker_fee = swap_result.maker_fee.to_uint(ask_asset_prec)?;
@@ -838,36 +787,39 @@ fn swap(
         BALANCES.save(
             deps.storage,
             &pools[ask_ind].info,
-            &(pools[ask_ind].amount.to_uint(ask_asset_prec)?
-                - return_amount
-                - maker_fee
-                - fee_share_amount),
+            &(pools[ask_ind].amount.to_uint(ask_asset_prec)? - return_amount - maker_fee),
             env.block.height,
         )?;
     }
 
-    Ok(Response::new().add_messages(messages).add_attributes(vec![
-        attr("action", "swap"),
-        attr("sender", sender),
-        attr("receiver", receiver),
-        attr("offer_asset", offer_asset_dec.info.to_string()),
-        attr("ask_asset", pools[ask_ind].info.to_string()),
-        attr("offer_amount", offer_asset.amount),
-        attr("return_amount", return_amount),
-        attr("spread_amount", spread_amount),
-        attr(
-            "commission_amount",
-            swap_result.total_fee.to_uint(ask_asset_prec)?,
-        ),
-        attr("maker_fee_amount", maker_fee),
-        attr("fee_share_amount", fee_share_amount),
-    ]))
+    let response_data = to_json_binary(&SwapExactAmountInResponseData {
+        token_out_amount: return_amount,
+    })?;
+
+    Ok(Response::new()
+        .add_messages(messages)
+        .add_attributes(vec![
+            attr("action", "swap"),
+            attr("sender", sender),
+            attr("receiver", receiver),
+            attr("offer_asset", offer_asset_dec.info.to_string()),
+            attr("ask_asset", pools[ask_ind].info.to_string()),
+            attr("offer_amount", offer_asset.amount),
+            attr("return_amount", return_amount),
+            attr("spread_amount", spread_amount),
+            attr(
+                "commission_amount",
+                swap_result.total_fee.to_uint(ask_asset_prec)?,
+            ),
+            attr("maker_fee_amount", maker_fee),
+        ])
+        .set_data(response_data))
 }
 
 /// Updates the pool configuration with the specified parameters in the `params` variable.
 ///
 /// * **params** new parameter values in [`Binary`] form.
-fn update_config(
+pub fn update_config(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
@@ -881,9 +833,7 @@ fn update_config(
         return Err(ContractError::Unauthorized {});
     }
 
-    let mut attrs: Vec<Attribute> = vec![];
-
-    let action = match from_binary::<ConcentratedPoolUpdateParams>(&params)? {
+    let action = match from_json::<ConcentratedPoolUpdateParams>(&params)? {
         ConcentratedPoolUpdateParams::Update(update_params) => {
             config.pool_params.update_params(update_params)?;
             "update_params"
@@ -912,67 +862,12 @@ fn update_config(
 
             "enable_asset_balances_tracking"
         }
-        ConcentratedPoolUpdateParams::EnableFeeShare {
-            fee_share_bps,
-            fee_share_address,
-        } => {
-            // Enable fee sharing for this contract
-            // If fee sharing is already enabled, we should be able to overwrite
-            // the values currently set
-
-            // Ensure the fee share isn't 0 and doesn't exceed the maximum allowed value
-            if fee_share_bps == 0 || fee_share_bps > MAX_FEE_SHARE_BPS {
-                return Err(ContractError::FeeShareOutOfBounds {});
-            }
-
-            // Set sharing config
-            config.fee_share = Some(FeeShareConfig {
-                bps: fee_share_bps,
-                recipient: deps.api.addr_validate(&fee_share_address)?,
-            });
-
-            CONFIG.save(deps.storage, &config)?;
-
-            attrs.push(attr("fee_share_bps", fee_share_bps.to_string()));
-            attrs.push(attr("fee_share_address", fee_share_address));
-            "enable_fee_share"
-        }
-        ConcentratedPoolUpdateParams::DisableFeeShare => {
-            // Disable fee sharing for this contract by setting bps and
-            // address back to None
-            config.fee_share = None;
-            CONFIG.save(deps.storage, &config)?;
-            "disable_fee_share"
-        }
+        ConcentratedPoolUpdateParams::EnableFeeShare { .. }
+        | ConcentratedPoolUpdateParams::DisableFeeShare => Err(StdError::generic_err(
+            "Fee sharing is not supported in this version",
+        ))?,
     };
     CONFIG.save(deps.storage, &config)?;
 
-    Ok(Response::new()
-        .add_attribute("action", action)
-        .add_attributes(attrs))
-}
-
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
-    let contract_version = get_contract_version(deps.storage)?;
-
-    match contract_version.contract.as_ref() {
-        "astroport-pair-concentrated" => match contract_version.version.as_ref() {
-            "1.1.0" => migrate_config(deps.storage)?,
-            "1.2.4" => {
-                BufferManager::init(deps.storage, OBSERVATIONS, OBSERVATIONS_SIZE)?;
-            }
-            "2.0.3" | "2.0.4" => {}
-            _ => return Err(ContractError::MigrationError {}),
-        },
-        _ => return Err(ContractError::MigrationError {}),
-    }
-
-    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-
-    Ok(Response::new()
-        .add_attribute("previous_contract_name", &contract_version.contract)
-        .add_attribute("previous_contract_version", &contract_version.version)
-        .add_attribute("new_contract_name", CONTRACT_NAME)
-        .add_attribute("new_contract_version", CONTRACT_VERSION))
+    Ok(Response::new().add_attribute("action", action))
 }
