@@ -346,7 +346,7 @@ pub fn query_config(deps: Deps, env: Env) -> StdResult<ConfigResponse> {
             price_scale,
             ma_half_time: config.pool_params.ma_half_time,
             track_asset_balances: config.track_asset_balances,
-            fee_share: None,
+            fee_share: config.fee_share,
         })?),
         owner: config.owner.unwrap_or(factory_config.owner),
         factory_addr: config.factory_addr,

@@ -440,8 +440,8 @@ pub fn provide_liquidity(
 
     let mut slippage = Decimal256::zero();
 
-    // if assets_diff[1] is zero then deposits are balanced thus no need to update price and check slippage
-    if !assets_diff[1].is_zero() {
+    // If deposit doesn't diverge too much from the balanced share, we don't update the price
+    if assets_diff[0] >= MIN_TRADE_SIZE && assets_diff[1] >= MIN_TRADE_SIZE {
         slippage = assert_slippage_tolerance(
             &deposits,
             share,
@@ -730,13 +730,19 @@ pub fn internal_swap(
     let total_share = query_native_supply(&deps.querier, &config.pair_info.liquidity_token)?
         .to_decimal256(LP_TOKEN_PRECISION)?;
 
-    let last_price = swap_result.calc_last_price(offer_asset_dec.amount, offer_ind);
+    // Skip very small trade sizes which could significantly mess up the price due to rounding errors,
+    // especially if token precisions are 18.
+    if (swap_result.dy + swap_result.maker_fee + swap_result.share_fee) >= MIN_TRADE_SIZE
+        && offer_asset_dec.amount >= MIN_TRADE_SIZE
+    {
+        let last_price = swap_result.calc_last_price(offer_asset_dec.amount, offer_ind);
 
-    // update_price() works only with internal representation
-    xs[1] *= config.pool_state.price_state.price_scale;
-    config
-        .pool_state
-        .update_price(&config.pool_params, &env, total_share, &xs, last_price)?;
+        // update_price() works only with internal representation
+        xs[1] *= config.pool_state.price_state.price_scale;
+        config
+            .pool_state
+            .update_price(&config.pool_params, &env, total_share, &xs, last_price)?;
+    }
 
     let receiver = to.unwrap_or_else(|| sender.clone());
 
