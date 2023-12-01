@@ -1,0 +1,76 @@
+name: Contract tests and checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_GIT_FETCH_WITH_CLI: true
+
+jobs:
+  test_and_check:
+    name: Test and check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.11.0
+        with:
+          access_token: ${{ github.token }}
+
+      - uses: actions/checkout@v3
+      - uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: |
+            ${{ secrets.GOV_PRIVATE_KEY }}
+            ${{ secrets.CORE_PRIVATE_KEY }}
+
+      - uses: actions/cache@v3
+        if: always()
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/git/checkouts
+            ~/.cargo/git/db
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - run: |
+          git config url."ssh://git@github.com/astroport-fi/hidden_astroport_governance.git".insteadOf "https://github.com/astroport-fi/hidden_astroport_governance"
+          git config url."ssh://git@github.com/astroport-fi/hidden_astroport_core.git".insteadOf "https://github.com/astroport-fi/hidden_astroport_core"
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: 1.68.0
+          override: true
+          target: wasm32-unknown-unknown
+          components: rustfmt, clippy, llvm-tools-preview
+
+      - name: Run tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --no-fail-fast --locked -- --test-threads 1 # disable parallelism due to issue with test-tube that cause flaky tests
+        env:
+          RUST_BACKTRACE: 1
+
+      - name: Run cargo clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: -- -D warnings
+
+      - name: Run cargo fmt
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
