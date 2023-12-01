@@ -7,11 +7,9 @@ use cosmwasm_schema::schemars::JsonSchema;
 use cosmwasm_schema::serde::de::DeserializeOwned;
 use cosmwasm_std::{
     coin, coins, from_json, to_json_binary, Addr, Api, BankMsg, Binary, BlockInfo, CustomQuery,
-    Empty, Querier, QueryRequest, Storage, SubMsgResponse, WasmMsg, WasmQuery,
+    Querier, QueryRequest, Storage, SubMsgResponse, WasmMsg, WasmQuery,
 };
-use cw_multi_test::{
-    AppResponse, BankSudo, CosmosRouter, Module, Stargate, StargateMsg, StargateQuery, WasmSudo,
-};
+use cw_multi_test::{AppResponse, BankSudo, CosmosRouter, Stargate, WasmSudo};
 use osmosis_std::types::osmosis::cosmwasmpool::v1beta1::{
     ContractInfoByPoolIdRequest, ContractInfoByPoolIdResponse, MsgCreateCosmWasmPool,
     MsgCreateCosmWasmPoolResponse,
@@ -32,11 +30,7 @@ pub struct OsmosisStargate {
     pub cw_pools: RefCell<HashMap<u64, String>>,
 }
 
-impl Module for OsmosisStargate {
-    type ExecT = StargateMsg;
-    type QueryT = StargateQuery;
-    type SudoT = Empty;
-
+impl Stargate for OsmosisStargate {
     fn execute<ExecC, QueryC>(
         &self,
         api: &dyn Api,
@@ -44,15 +38,16 @@ impl Module for OsmosisStargate {
         router: &dyn CosmosRouter<ExecC = ExecC, QueryC = QueryC>,
         block: &BlockInfo,
         sender: Addr,
-        msg: Self::ExecT,
+        type_url: String,
+        value: Binary,
     ) -> AnyResult<AppResponse>
     where
         ExecC: Debug + Clone + PartialEq + JsonSchema + DeserializeOwned + 'static,
         QueryC: CustomQuery + DeserializeOwned + 'static,
     {
-        match msg.type_url.as_str() {
+        match type_url.as_str() {
             MsgCreateCosmWasmPool::TYPE_URL => {
-                let cw_msg: MsgCreateCosmWasmPool = msg.value.try_into()?;
+                let cw_msg: MsgCreateCosmWasmPool = value.try_into()?;
                 let init_wasm = WasmMsg::Instantiate {
                     admin: None,
                     code_id: cw_msg.code_id,
@@ -96,7 +91,7 @@ impl Module for OsmosisStargate {
                 Ok(submsg_response.into())
             }
             MsgCreateDenom::TYPE_URL => {
-                let tf_msg: MsgCreateDenom = msg.value.try_into()?;
+                let tf_msg: MsgCreateDenom = value.try_into()?;
                 let submsg_response = SubMsgResponse {
                     events: vec![],
                     data: Some(
@@ -112,7 +107,7 @@ impl Module for OsmosisStargate {
                 Ok(submsg_response.into())
             }
             MsgMint::TYPE_URL => {
-                let tf_msg: MsgMint = msg.value.try_into()?;
+                let tf_msg: MsgMint = value.try_into()?;
                 let mint_coins = tf_msg
                     .amount
                     .expect("Empty amount in tokenfactory MsgMint!");
@@ -123,18 +118,23 @@ impl Module for OsmosisStargate {
                 router.sudo(api, storage, block, bank_sudo.into())
             }
             MsgBurn::TYPE_URL => {
-                let tf_msg: MsgBurn = msg.value.try_into()?;
+                let tf_msg: MsgBurn = value.try_into()?;
                 let burn_coins = tf_msg
                     .amount
                     .expect("Empty amount in tokenfactory MsgBurn!");
-                let bank_sudo = BankSudo::Burn {
-                    from_address: tf_msg.sender,
+                let burn_msg = BankMsg::Burn {
                     amount: coins(burn_coins.amount.parse()?, burn_coins.denom),
                 };
-                router.sudo(api, storage, block, bank_sudo.into())
+                router.execute(
+                    api,
+                    storage,
+                    block,
+                    Addr::unchecked(tf_msg.sender),
+                    burn_msg.into(),
+                )
             }
             MsgSwapExactAmountIn::TYPE_URL => {
-                let pm_msg: MsgSwapExactAmountIn = msg.value.try_into()?;
+                let pm_msg: MsgSwapExactAmountIn = value.try_into()?;
                 let token_in = pm_msg.token_in.expect("token_in must be set!");
 
                 let contract_addr =
@@ -165,7 +165,7 @@ impl Module for OsmosisStargate {
                 router.sudo(api, storage, block, wasm_sudo_msg.into())
             }
             MsgSwapExactAmountOut::TYPE_URL => {
-                let pm_msg: MsgSwapExactAmountOut = msg.value.try_into()?;
+                let pm_msg: MsgSwapExactAmountOut = value.try_into()?;
                 let token_out = pm_msg.token_out.expect("token_out must be set!");
 
                 let contract_addr =
@@ -211,24 +211,9 @@ impl Module for OsmosisStargate {
                 router.sudo(api, storage, block, wasm_sudo_msg.into())
             }
             _ => Err(anyhow::anyhow!(
-                "Unexpected exec msg {msg:?} from {sender:?}",
+                "Unexpected exec msg {type_url} from {sender:?}",
             )),
         }
-    }
-
-    fn sudo<ExecC, QueryC>(
-        &self,
-        _api: &dyn Api,
-        _storage: &mut dyn Storage,
-        _router: &dyn CosmosRouter<ExecC = ExecC, QueryC = QueryC>,
-        _block: &BlockInfo,
-        _msg: Self::SudoT,
-    ) -> AnyResult<AppResponse>
-    where
-        ExecC: Debug + Clone + PartialEq + JsonSchema + DeserializeOwned + 'static,
-        QueryC: CustomQuery + DeserializeOwned + 'static,
-    {
-        unimplemented!("sudo for Osmosis Stargate mock module is not implemented")
     }
 
     fn query(
@@ -237,11 +222,12 @@ impl Module for OsmosisStargate {
         _storage: &dyn Storage,
         _querier: &dyn Querier,
         _block: &BlockInfo,
-        request: Self::QueryT,
+        path: String,
+        data: Binary,
     ) -> AnyResult<Binary> {
-        match request.path.as_str() {
+        match path.as_str() {
             "/osmosis.cosmwasmpool.v1beta1.Query/ContractInfoByPoolId" => {
-                let inner: ContractInfoByPoolIdRequest = request.data.try_into()?;
+                let inner: ContractInfoByPoolIdRequest = data.try_into()?;
                 let contract_address = self.cw_pools.borrow()[&inner.pool_id].clone();
                 Ok(to_json_binary(&ContractInfoByPoolIdResponse {
                     contract_address,
@@ -257,11 +243,7 @@ impl Module for OsmosisStargate {
                     }),
                 })?)
             }
-            _ => Err(anyhow::anyhow!(
-                "Unexpected stargate query request {request:?}",
-            )),
+            _ => Err(anyhow::anyhow!("Unexpected stargate query request {path}",)),
         }
     }
 }
-
-impl Stargate for OsmosisStargate {}

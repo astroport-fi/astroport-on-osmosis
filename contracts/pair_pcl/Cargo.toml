@@ -24,7 +24,7 @@ thiserror = "1"
 osmosis-std = { workspace = true }
 
 [dev-dependencies]
-cw-multi-test = { git = "https://github.com/astroport-fi/cw-multi-test", branch = "astroport_cozy_fork", features = ["stargate"] }
+cw-multi-test = { git = "https://github.com/CosmWasm/cw-multi-test", rev = "b1ce5acd07226b91c45f27b9bb01e67697cdd20f", features = ["cosmwasm_1_1"] }
 anyhow = "1"
 derivative = "2"
 astroport-native-coin-registry = { workspace = true }

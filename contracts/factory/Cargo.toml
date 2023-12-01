@@ -26,6 +26,6 @@ itertools = "0.11"
 
 [dev-dependencies]
 astroport-pcl-osmo = { path = "../pair_pcl" }
-cw-multi-test = "0.15"
+cw-multi-test = { git = "https://github.com/CosmWasm/cw-multi-test", rev = "b1ce5acd07226b91c45f27b9bb01e67697cdd20f" }
 prost = "0.11"
 anyhow = "1"
