@@ -1,4 +1,4 @@
-use astroport::asset::{native_asset_info, AssetInfoExt};
+use astroport::asset::{native_asset_info, AssetInfo, AssetInfoExt};
 use astroport::pair;
 use astroport::pair_concentrated::ConcentratedPoolParams;
 use cosmwasm_std::{coin, to_json_binary, Coin, Decimal};
@@ -209,5 +209,56 @@ fn init_outside_of_factory() {
     assert_eq!(
         err.to_string(),
         "execute error: failed to execute message; message index: 0: Pair is not registered in the factory. Only swap and withdraw are allowed: execute wasm contract failed"
+    );
+}
+
+#[test]
+fn swap_with_fake_token() {
+    let app = OsmosisTestApp::new();
+    let helper = TestAppWrapper::bootstrap(&app).unwrap();
+
+    let foo_denom = helper.register_and_mint("foo", 1_000_000_000000, 6, None);
+    let bar_denom = helper.register_and_mint("bar", 1_000_000_000000, 6, None);
+    let foo = native_asset_info(foo_denom.clone());
+    let bar = native_asset_info(bar_denom.clone());
+
+    let (pair_addr, _) = helper
+        .create_pair(&[foo.clone(), bar.clone()], default_pcl_params())
+        .unwrap();
+    let pool_id = helper.get_pool_id_by_contract(&pair_addr);
+
+    helper
+        .provide(
+            &helper.signer,
+            &pair_addr,
+            &[
+                foo.with_balance(50_000_000000u128),
+                bar.with_balance(100_000_000000u128),
+            ],
+            None,
+        )
+        .unwrap();
+
+    // Try to swap fake tokens via DEX module
+    let asset = AssetInfo::native("random").with_balance(1_000000u128);
+    let user = helper
+        .app
+        .init_account(&[asset.as_coin().unwrap(), gas_fee()])
+        .unwrap();
+
+    let err = helper.swap_on_dex(&user, pool_id, &asset).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "execute error: failed to execute message; message index: 0: The asset random does not belong to the pair: execute wasm contract failed"
+    );
+
+    // Try reverse swap fake tokens via DEX module
+    let ask_asset = bar.with_balance(1_000000u128);
+    let err = helper
+        .reverse_swap_on_dex(&user, pool_id, "random", 1_000000u128, &ask_asset)
+        .unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "execute error: failed to execute message; message index: 0: The asset random does not belong to the pair: execute wasm contract failed"
     );
 }

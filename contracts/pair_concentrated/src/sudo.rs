@@ -1,4 +1,4 @@
-use astroport::asset::{native_asset_info, AssetInfoExt};
+use astroport::asset::{native_asset_info, AssetInfo, AssetInfoExt};
 use astroport::cosmwasm_ext::{DecimalToInteger, IntegerToDecimal};
 use astroport::observation::PrecommitObservation;
 use astroport::pair::MIN_TRADE_SIZE;
@@ -11,7 +11,6 @@ use cosmwasm_std::{
     attr, ensure, to_json_binary, Coin, Decimal, Decimal256, DepsMut, Env, Response, StdError,
     Uint128,
 };
-use itertools::Itertools;
 
 use astroport_on_osmosis::pair_pcl::{SudoMessage, SwapExactAmountOutResponseData};
 
@@ -96,11 +95,14 @@ fn swap_exact_amount_out(
         .pair_info
         .query_pools(&deps.querier, &env.contract.address)?;
 
-    let (ask_ind, _) = pools
+    let ask_ind = pools
         .iter()
-        .find_position(|asset| asset.info == ask_asset.info)
+        .position(|asset| asset.info == ask_asset.info)
         .ok_or_else(|| ContractError::InvalidAsset(ask_asset.info.to_string()))?;
-    let offer_ind = 1 ^ ask_ind;
+    let offer_ind = pools
+        .iter()
+        .position(|asset| asset.info == AssetInfo::native(&token_in_denom))
+        .ok_or(ContractError::InvalidAsset(token_in_denom))?;
     let offer_asset_prec = precisions.get_precision(&pools[offer_ind].info)?;
 
     // Offer pool must have token_in_max_amount in it. We need to subtract it from the pool balance
