@@ -56,7 +56,7 @@ pub fn instantiate(
         token_code_id: msg.token_code_id,
         fee_address: None,
         generator_address: None,
-        whitelist_code_id: 0,
+        whitelist_code_id: msg.whitelist_code_id,
         coin_registry_address: deps.api.addr_validate(&msg.coin_registry_address)?,
     };
 
