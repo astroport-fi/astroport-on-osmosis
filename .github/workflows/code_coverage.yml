@@ -1,0 +1,62 @@
+name: Code coverage
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_GIT_FETCH_WITH_CLI: true
+
+jobs:
+  code-coverage:
+    name: Code coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.9.1
+        with:
+          access_token: ${{ github.token }}
+
+      - uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: |
+            ${{ secrets.GOV_PRIVATE_KEY }}
+            ${{ secrets.CORE_PRIVATE_KEY }}
+
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - run: |
+          git config url."ssh://git@github.com/astroport-fi/hidden_astroport_governance.git".insteadOf "https://github.com/astroport-fi/hidden_astroport_governance"
+          git config url."ssh://git@github.com/astroport-fi/hidden_astroport_core.git".insteadOf "https://github.com/astroport-fi/hidden_astroport_core"
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: 1.68.0
+          override: true
+
+      - name: Run cargo-tarpaulin
+        uses: actions-rs/tarpaulin@v0.1
+        with:
+          version: '0.22.0'
+          args: '--exclude-files *tests*.rs target*.rs -e astroport-osmo-e2e-tests --workspace -o Html'
+
+      - name: Attach coverage report
+        uses: actions/upload-artifact@v3
+        with:
+          path: ${{ github.workspace }}/tarpaulin-report.html
+          if-no-files-found: error
+
+      - name: Upload to codecov.io
+        if: github.ref == 'refs/heads/main'
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          fail_ci_if_error: true

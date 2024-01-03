@@ -1,0 +1,26 @@
+[workspace]
+resolver = "2"
+members = [
+    "contracts/*",
+    "e2e_tests",
+    "packages/*"
+]
+
+[profile.release]
+opt-level = "z"
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+panic = 'abort'
+incremental = false
+overflow-checks = true
+strip = true
+
+[workspace.dependencies]
+astroport = { git = "https://github.com/astroport-fi/astroport-core", version = "3.7" }
+astroport-pcl-common = { git = "https://github.com/astroport-fi/astroport-core", version = "1.0.1" }
+astroport-circular-buffer = { git = "https://github.com/astroport-fi/astroport-core", version = "0.1.0" }
+astroport-native-coin-registry = "1.0.1"
+osmosis-std = "0.20.1"
