@@ -50,7 +50,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: 1.68.0
+          toolchain: 1.75.0
           override: true
           target: wasm32-unknown-unknown
           components: rustfmt, clippy, llvm-tools-preview
