@@ -178,7 +178,11 @@ pub fn execute(
 
 /// Updates general contract settings.
 ///
-/// * **param** is an object of type [`UpdateConfig`] that contains the parameters to update.
+/// * **fee_address** if Some defines new Astroport fees receiver,
+///
+/// * **generator_address** if Some defines new Astroport generator address,
+///
+/// * **coin_registry_address** if Some defines new Astroport coin registry address.
 ///
 /// ## Executor
 /// Only the owner can execute this.
