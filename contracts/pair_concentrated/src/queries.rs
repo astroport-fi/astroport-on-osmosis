@@ -275,6 +275,8 @@ pub fn query_reverse_simulation(
 
     let pools = query_pools(deps.querier, &env.contract.address, &config, &precisions)?;
 
+    before_swap_check(&pools, ask_asset_dec.amount)?;
+
     let (ask_ind, _) = pools
         .iter()
         .find_position(|asset| asset.info == ask_asset.info)

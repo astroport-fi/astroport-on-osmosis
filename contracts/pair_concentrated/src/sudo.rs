@@ -95,6 +95,16 @@ fn swap_exact_amount_out(
         .pair_info
         .query_pools(&deps.querier, &env.contract.address)?;
 
+    // Before swap checks
+    ensure!(
+        !token_out.amount.is_zero(),
+        StdError::generic_err("Token out amount must not be zero")
+    );
+    ensure!(
+        pools.iter().all(|a| !a.amount.is_zero()),
+        StdError::generic_err("One of the pools is empty")
+    );
+
     let ask_ind = pools
         .iter()
         .position(|asset| asset.info == ask_asset.info)
