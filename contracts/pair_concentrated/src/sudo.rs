@@ -8,8 +8,8 @@ use astroport_pcl_common::utils::{compute_offer_amount, compute_swap};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, coin, ensure, to_json_binary, BankMsg, Coin, Decimal, Decimal256, DepsMut, Env, Response,
-    StdError, Uint128,
+    attr, ensure, to_json_binary, Coin, Decimal, Decimal256, DepsMut, Env, Response, StdError,
+    Uint128,
 };
 use itertools::Itertools;
 
@@ -220,36 +220,21 @@ fn swap_exact_amount_out(
         token_in_amount: offer_asset.amount,
     })?;
 
-    let mut attrs = vec![
-        attr("method", "swap_exact_amount_out"),
-        attr("sender", sender.clone()),
-        attr("offer_asset", offer_asset.info.to_string()),
-        attr("ask_asset", ask_asset.info.to_string()),
-        attr("offer_amount", offer_asset.amount),
-        attr("return_amount", return_amount),
-        attr("spread_amount", spread_amount),
-        attr(
-            "commission_amount",
-            swap_result.total_fee.to_uint(ask_asset_prec)?,
-        ),
-        attr("maker_fee_amount", maker_fee),
-    ];
-
-    let excess_amount = token_in_max_amount.saturating_sub(offer_asset.amount);
-    if !excess_amount.is_zero() {
-        let excess_coin = coin(excess_amount.u128(), token_in_denom);
-        attrs.push(attr("excess_tokens", excess_coin.to_string()));
-        messages.push(
-            BankMsg::Send {
-                to_address: sender,
-                amount: vec![excess_coin],
-            }
-            .into(),
-        );
-    }
-
     Ok(Response::new()
         .add_messages(messages)
-        .add_attributes(attrs)
+        .add_attributes([
+            attr("method", "swap_exact_amount_out"),
+            attr("sender", sender),
+            attr("offer_asset", offer_asset.info.to_string()),
+            attr("ask_asset", ask_asset.info.to_string()),
+            attr("offer_amount", offer_asset.amount),
+            attr("return_amount", return_amount),
+            attr("spread_amount", spread_amount),
+            attr(
+                "commission_amount",
+                swap_result.total_fee.to_uint(ask_asset_prec)?,
+            ),
+            attr("maker_fee_amount", maker_fee),
+        ])
         .set_data(response_data))
 }

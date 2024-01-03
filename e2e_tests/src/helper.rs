@@ -183,7 +183,6 @@ impl<'a> TestAppWrapper<'a> {
                 wasm_byte_code: std::fs::read(cl_pool_wasm).unwrap(),
             },
             helper.signer.address(),
-            false,
             &helper.signer,
         )?;
 
@@ -449,7 +448,14 @@ impl<'a> TestAppWrapper<'a> {
         T: ?Sized + Serialize,
     {
         self.wasm
-            .instantiate(self.code_ids[name], msg, None, None, funds, &self.signer)
+            .instantiate(
+                self.code_ids[name],
+                msg,
+                None,
+                Some("label"),
+                funds,
+                &self.signer,
+            )
             .map(|res| res.data.address)
             .map_err(Into::into)
     }

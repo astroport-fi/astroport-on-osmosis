@@ -23,4 +23,4 @@ astroport = { git = "https://github.com/astroport-fi/astroport-core", version = 
 astroport-pcl-common = { git = "https://github.com/astroport-fi/astroport-core", version = "1.0.1" }
 astroport-circular-buffer = { git = "https://github.com/astroport-fi/astroport-core", version = "0.1.0" }
 astroport-native-coin-registry = "1.0.1"
-osmosis-std = "0.20.1"
+osmosis-std = "0.21.0"

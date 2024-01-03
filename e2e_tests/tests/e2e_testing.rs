@@ -153,7 +153,7 @@ fn dex_swap_test() {
         .unwrap();
     let foo_bal = helper.coin_balance(&user2.address(), &foo_denom);
     let bar_bal = helper.coin_balance(&user2.address(), &bar_denom);
-    assert_eq!(foo_bal, 91406); // excess tokens sent back to the user2
+    assert_eq!(foo_bal, 45703); // excess tokens sent back to the user2
     assert_eq!(bar_bal, 1_903626); // PCL pool gives slightly more tokens than expected (due to dynamic fees)
 }
 

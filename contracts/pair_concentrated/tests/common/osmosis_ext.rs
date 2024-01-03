@@ -7,7 +7,7 @@ use cosmwasm_schema::schemars::JsonSchema;
 use cosmwasm_schema::serde::de::DeserializeOwned;
 use cosmwasm_std::{
     coin, coins, from_json, to_json_binary, Addr, Api, BankMsg, Binary, BlockInfo, CustomQuery,
-    Querier, QueryRequest, Storage, SubMsgResponse, WasmMsg, WasmQuery,
+    Querier, QueryRequest, Storage, SubMsgResponse, Uint128, WasmMsg, WasmQuery,
 };
 use cw_multi_test::{AppResponse, BankSudo, CosmosRouter, Stargate, WasmSudo};
 use osmosis_std::types::osmosis::cosmwasmpool::v1beta1::{
@@ -23,7 +23,9 @@ use osmosis_std::types::osmosis::tokenfactory::v1beta1::{
 };
 
 use astroport_on_osmosis::pair_pcl;
-use astroport_on_osmosis::pair_pcl::{GetSwapFeeResponse, QueryMsg};
+use astroport_on_osmosis::pair_pcl::{
+    GetSwapFeeResponse, QueryMsg, SwapExactAmountOutResponseData,
+};
 
 #[derive(Default)]
 pub struct OsmosisStargate {
@@ -184,10 +186,13 @@ impl Stargate for OsmosisStargate {
                     )
                     .unwrap();
 
+                let token_in_denom = pm_msg.routes[0].token_in_denom.clone();
+                let token_in_max_amount: Uint128 = pm_msg.token_in_max_amount.parse()?;
+
                 let inner_contract_msg = pair_pcl::SudoMessage::SwapExactAmountOut {
                     sender: pm_msg.sender.clone(),
-                    token_in_denom: pm_msg.routes[0].token_in_denom.clone(),
-                    token_in_max_amount: pm_msg.token_in_max_amount.parse()?,
+                    token_in_denom: token_in_denom.clone(),
+                    token_in_max_amount,
                     token_out: coin(token_out.amount.parse()?, token_out.denom),
                     swap_fee: from_json::<GetSwapFeeResponse>(&res)?.swap_fee,
                 };
@@ -196,7 +201,7 @@ impl Stargate for OsmosisStargate {
                     api,
                     storage,
                     block,
-                    Addr::unchecked(pm_msg.sender),
+                    Addr::unchecked(&pm_msg.sender),
                     BankMsg::Send {
                         to_address: contract_addr.to_string(),
                         amount: coins(
@@ -208,7 +213,34 @@ impl Stargate for OsmosisStargate {
                 )?;
 
                 let wasm_sudo_msg = WasmSudo::new(&contract_addr, &inner_contract_msg)?;
-                router.sudo(api, storage, block, wasm_sudo_msg.into())
+                let resp = router.sudo(api, storage, block, wasm_sudo_msg.into());
+
+                // Cosmwasmpool derives excess tokens itself and sends them back to the sender.
+                // https://github.com/osmosis-labs/osmosis/blob/294302637a47ffec5cafc0c1953e88a54390b20e/x/cosmwasmpool/pool_module.go#L316-L321
+                // Mimic this logic here.
+                if let Ok(resp) = &resp {
+                    let raw = resp.data.clone().expect("Data must be set in response");
+                    let token_in_amount = from_json::<SwapExactAmountOutResponseData>(&raw)
+                        .unwrap()
+                        .token_in_amount;
+                    let excess_tokens = token_in_max_amount - token_in_amount;
+
+                    if !excess_tokens.is_zero() {
+                        router.execute(
+                            api,
+                            storage,
+                            block,
+                            Addr::unchecked(contract_addr),
+                            BankMsg::Send {
+                                to_address: pm_msg.sender.to_string(),
+                                amount: coins(excess_tokens.u128(), token_in_denom),
+                            }
+                            .into(),
+                        )?;
+                    }
+                }
+
+                resp
             }
             _ => Err(anyhow::anyhow!(
                 "Unexpected exec msg {type_url} from {sender:?}",

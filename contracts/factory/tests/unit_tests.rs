@@ -126,7 +126,7 @@ fn update_config() {
     }];
 
     let msg = InstantiateMsg {
-        pair_configs: pair_configs,
+        pair_configs,
         token_code_id: 123u64,
         fee_address: None,
         owner: owner.to_string(),
@@ -512,7 +512,7 @@ fn create_pair() {
             msg: MsgCreateCosmWasmPool {
                 code_id: pair_config.code_id,
                 instantiate_msg: to_json_binary(&pair::InstantiateMsg {
-                    asset_infos: asset_infos,
+                    asset_infos,
                     token_code_id: 0,
                     factory_addr: MOCK_CONTRACT_ADDR.to_string(),
                     init_params: None,
@@ -787,7 +787,7 @@ fn register() {
         vec![PairInfo {
             liquidity_token: Addr::unchecked("liquidity0000"),
             contract_addr: Addr::unchecked("pair0000"),
-            asset_infos: asset_infos,
+            asset_infos,
             pair_type: PairType::Xyk {},
         },]
     );
