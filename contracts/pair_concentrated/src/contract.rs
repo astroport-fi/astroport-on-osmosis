@@ -92,7 +92,7 @@ pub fn instantiate(
     }
 
     let params: ConcentratedPoolParams = from_json(
-        &msg.init_params
+        msg.init_params
             .ok_or(ContractError::InitParamsNotFound {})?,
     )?;
     ensure!(
@@ -294,9 +294,6 @@ fn set_pool_id(deps: DepsMut, info: MessageInfo, pool_id: u64) -> Result<Respons
 /// * **slippage_tolerance** is an optional parameter which is used to specify how much
 /// the pool price can move until the provide liquidity transaction goes through.
 ///
-/// * **auto_stake** is an optional parameter which determines whether the LP tokens minted after
-/// liquidity provision are automatically staked in the Generator contract on behalf of the LP token receiver.
-///
 /// * **receiver** is an optional parameter which defines the receiver of the LP tokens.
 /// If no custom receiver is specified, the pair will mint LP tokens for the function caller.
 pub fn provide_liquidity(
@@ -429,11 +426,11 @@ pub fn provide_liquidity(
 
     // calculate accrued share
     let share_ratio = share / (total_share + share);
-    let balanced_share = vec![
+    let balanced_share = [
         new_xp[0] * share_ratio,
         new_xp[1] * share_ratio / config.pool_state.price_state.price_scale,
     ];
-    let assets_diff = vec![
+    let assets_diff = [
         deposits[0].diff(balanced_share[0]),
         deposits[1].diff(balanced_share[1]),
     ];
@@ -506,8 +503,6 @@ pub fn provide_liquidity(
 /// Withdraw liquidity from the pool.
 ///
 /// * **assets** defines number of coins a user wants to withdraw per each asset.
-///
-/// * **receiver** address that will receive assets back from the pair contract
 pub fn withdraw_liquidity(
     deps: DepsMut,
     env: Env,
@@ -602,6 +597,14 @@ pub fn withdraw_liquidity(
 ///
 /// From external perspective this function behaves in the same way as in other Astroport pairs.
 /// However, internally it forwards swap request to the Osmosis DEX module.
+///
+/// * **offer_asset** proposed asset for swapping.
+///
+/// * **belief_price** is used to calculate the maximum swap spread.
+///
+/// * **max_spread** sets the maximum spread of the swap operation.
+///
+/// * **to** sets the recipient of the swap operation.
 pub fn execute_swap(
     deps: DepsMut,
     env: Env,

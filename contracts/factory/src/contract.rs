@@ -56,7 +56,7 @@ pub fn instantiate(
         token_code_id: msg.token_code_id,
         fee_address: None,
         generator_address: None,
-        whitelist_code_id: 0,
+        whitelist_code_id: msg.whitelist_code_id,
         coin_registry_address: deps.api.addr_validate(&msg.coin_registry_address)?,
     };
 
@@ -178,7 +178,11 @@ pub fn execute(
 
 /// Updates general contract settings.
 ///
-/// * **param** is an object of type [`UpdateConfig`] that contains the parameters to update.
+/// * **fee_address** if Some defines new Astroport fees receiver,
+///
+/// * **generator_address** if Some defines new Astroport generator address,
+///
+/// * **coin_registry_address** if Some defines new Astroport coin registry address.
 ///
 /// ## Executor
 /// Only the owner can execute this.
@@ -196,23 +200,28 @@ pub fn execute_update_config(
         return Err(ContractError::Unauthorized {});
     }
 
+    let mut attrs = vec![attr("action", "update_config")];
+
     if let Some(fee_address) = fee_address {
         // Validate address format
         config.fee_address = Some(deps.api.addr_validate(&fee_address)?);
+        attrs.push(attr("fee_address", fee_address));
     }
 
     if let Some(generator_address) = generator_address {
         // Validate the address format
         config.generator_address = Some(deps.api.addr_validate(&generator_address)?);
+        attrs.push(attr("generator_address", generator_address));
     }
 
     if let Some(coin_registry_address) = coin_registry_address {
         config.coin_registry_address = deps.api.addr_validate(&coin_registry_address)?;
+        attrs.push(attr("coin_registry_address", coin_registry_address));
     }
 
     CONFIG.save(deps.storage, &config)?;
 
-    Ok(Response::new().add_attribute("action", "update_config"))
+    Ok(Response::new().add_attributes(attrs))
 }
 
 /// Updates a pair type's configuration.
