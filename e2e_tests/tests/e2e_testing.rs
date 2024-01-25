@@ -6,8 +6,7 @@ use osmosis_std::types::osmosis::cosmwasmpool::v1beta1::{
     ContractInfoByPoolIdRequest, ContractInfoByPoolIdResponse, MsgCreateCosmWasmPool,
     MsgCreateCosmWasmPoolResponse,
 };
-use osmosis_test_tube::{Account, OsmosisTestApp};
-use test_tube::Runner;
+use osmosis_test_tube::{Account, OsmosisTestApp, Runner};
 
 use astroport_osmo_e2e_tests::helper::{f64_to_dec, TestAppWrapper};
 
