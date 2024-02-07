@@ -161,6 +161,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "astroport-osmo-fee-collector"
+version = "1.0.0"
+dependencies = [
+ "astroport 3.9.0",
+ "astroport-on-osmosis",
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-multi-test",
+ "cw-storage-plus 0.15.1",
+ "cw-utils 1.0.3",
+ "cw2 1.1.2",
+ "itertools 0.11.0",
+ "osmosis-std",
+ "thiserror",
+]
+
+[[package]]
 name = "astroport-pcl-common"
 version = "1.1.0"
 source = "git+https://github.com/astroport-fi/astroport-core#b08b4d86050f0c473673b363aa9a4e8e30cf7082"
