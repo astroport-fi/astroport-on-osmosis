@@ -19,12 +19,12 @@ cosmwasm-schema = "1"
 cw-storage-plus = "0.15"
 cw-utils = "1"
 cw2 = "1"
-itertools = "0.11"
+itertools = "0.12"
 thiserror = "1"
 osmosis-std = { workspace = true }
 
 [dev-dependencies]
-cw-multi-test = { git = "https://github.com/CosmWasm/cw-multi-test", rev = "b1ce5acd07226b91c45f27b9bb01e67697cdd20f", features = ["cosmwasm_1_1"] }
+cw-multi-test = { version = "0.20.0", features = ["cosmwasm_1_1"] }
 anyhow = "1"
 derivative = "2"
 astroport-native-coin-registry = { workspace = true }
