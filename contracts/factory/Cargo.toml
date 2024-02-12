@@ -4,7 +4,7 @@ version = "1.0.0"
 authors = ["Astroport"]
 edition = "2021"
 description = "Astroport factory contract for Osmosis"
-license = "MIT"
+license = "GPL-3.0-only"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -25,6 +25,6 @@ thiserror = "1.0"
 itertools = "0.12"
 
 [dev-dependencies]
-astroport-pcl-osmo = { path = "../pair_concentrated" }
+astroport-pcl-osmo = { path = "../pair_concentrated", features = ["library"] }
 cw-multi-test = "0.20.0"
 anyhow = "1"

@@ -1,7 +1,10 @@
 [package]
 name = "astroport-pcl-osmo"
 version = "1.0.0"
+authors = ["Astroport"]
 edition = "2021"
+description = "Astroport passive concentrated pair contract for Osmosis"
+license = "GPL-3.0-only"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -13,7 +16,7 @@ library = []
 astroport = { workspace = true }
 astroport-pcl-common = { workspace = true }
 astroport-circular-buffer = { workspace = true }
-astroport-on-osmosis = { path = "../../packages/astroport_on_osmosis" }
+astroport-on-osmosis = { path = "../../packages/astroport_on_osmosis", version = "1" }
 cosmwasm-std = { version = "1", features = ["cosmwasm_1_1"] }
 cosmwasm-schema = "1"
 cw-storage-plus = "0.15"
@@ -31,4 +34,4 @@ astroport-native-coin-registry = { workspace = true }
 astroport-factory = { package = "astroport-factory-osmosis", path = "../factory" }
 
 # this contract only to check that cw20 is not allowed in this Astroport version
-cw20-base = "1"
+cw20-base = { version = "1", features = ["library"] }
