@@ -122,6 +122,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "astroport-maker-osmosis"
+version = "1.0.0"
+dependencies = [
+ "astroport 3.9.0",
+ "astroport-on-osmosis",
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-multi-test",
+ "cw-storage-plus 0.15.1",
+ "cw-utils 1.0.3",
+ "cw2 1.1.2",
+ "itertools 0.12.0",
+ "osmosis-std",
+ "thiserror",
+]
+
+[[package]]
 name = "astroport-native-coin-registry"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
