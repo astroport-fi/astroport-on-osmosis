@@ -21,6 +21,7 @@ cw-utils = "1"
 cw2 = "1"
 astroport.workspace = true
 astroport-on-osmosis = { path = "../../packages/astroport_on_osmosis", version = "1" }
+astro-satellite-package = "1"
 thiserror = "1.0"
 itertools.workspace = true
 

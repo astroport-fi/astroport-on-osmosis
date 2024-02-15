@@ -44,6 +44,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "080e9890a082662b09c1ad45f567faeeb47f22b5fb23895fbe1e651e718e25ca"
 
 [[package]]
+name = "astro-satellite-package"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "893363819104a2a4685d99f19e35e5d81102fb782e622619ac643e54ff65d638"
+dependencies = [
+ "astroport-governance",
+ "cosmwasm-schema",
+ "cosmwasm-std",
+]
+
+[[package]]
 name = "astroport"
 version = "2.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -122,9 +133,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "astroport-governance"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72806ace350e81c4e1cab7e275ef91f05bad830275d697d67ad1bd4acc6f016d"
+dependencies = [
+ "astroport 2.9.5",
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus 0.15.1",
+ "cw20 0.15.1",
+]
+
+[[package]]
 name = "astroport-maker-osmosis"
 version = "1.0.0"
 dependencies = [
+ "astro-satellite-package",
  "astroport 3.9.0",
  "astroport-on-osmosis",
  "cosmwasm-schema",
