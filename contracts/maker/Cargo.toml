@@ -26,4 +26,9 @@ thiserror = "1.0"
 itertools.workspace = true
 
 [dev-dependencies]
-cw-multi-test = "0.20.0"
+cw-multi-test = { version = "0.20.0", features = ["cosmwasm_1_1"] }
+anyhow = "1"
+derivative = "2"
+astroport-native-coin-registry = { workspace = true }
+astroport-factory = { package = "astroport-factory-osmosis", path = "../factory" }
+astroport-pcl-osmo = { path = "../pair_concentrated" }
