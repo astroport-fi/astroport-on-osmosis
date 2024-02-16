@@ -40,6 +40,7 @@ fn test_init() {
                     maker_fee_bps: 5000,
                     is_disabled: false,
                     is_generator_disabled: false,
+                    permissioned: false,
                 },
                 // Two pair configs with equal types are not allowed
                 PairConfig {
@@ -49,6 +50,7 @@ fn test_init() {
                     maker_fee_bps: 5000,
                     is_disabled: false,
                     is_generator_disabled: false,
+                    permissioned: false,
                 },
             ],
             token_code_id: 0,
@@ -74,6 +76,7 @@ fn test_init() {
                 maker_fee_bps: 5000,
                 is_disabled: false,
                 is_generator_disabled: false,
+                permissioned: false,
             }],
             token_code_id: 0,
             fee_address: None,
@@ -94,6 +97,7 @@ fn test_init() {
             maker_fee_bps: 5000,
             is_disabled: false,
             is_generator_disabled: false,
+            permissioned: false,
         }],
         token_code_id: 0,
         fee_address: None,
@@ -123,6 +127,7 @@ fn update_config() {
         maker_fee_bps: 166,
         is_disabled: false,
         is_generator_disabled: false,
+        permissioned: false,
     }];
 
     let msg = InstantiateMsg {
@@ -271,6 +276,7 @@ fn update_pair_config() {
         maker_fee_bps: 10,
         is_disabled: false,
         is_generator_disabled: false,
+        permissioned: false,
     }];
 
     let msg = InstantiateMsg {
@@ -302,6 +308,7 @@ fn update_pair_config() {
         maker_fee_bps: 2,
         is_disabled: false,
         is_generator_disabled: false,
+        permissioned: false,
     };
 
     // Unauthorized err
@@ -325,6 +332,7 @@ fn update_pair_config() {
             maker_fee_bps: 10_001,
             is_disabled: false,
             is_generator_disabled: false,
+            permissioned: false,
         },
     };
 
@@ -352,6 +360,7 @@ fn update_pair_config() {
         maker_fee_bps: 20,
         is_disabled: false,
         is_generator_disabled: false,
+        permissioned: false,
     };
 
     let info = mock_info(owner, &[]);
@@ -381,6 +390,7 @@ fn update_pair_config() {
                 maker_fee_bps: 5000,
                 is_disabled: true,
                 is_generator_disabled: false,
+                permissioned: false,
             },
         },
     )
@@ -417,6 +427,7 @@ fn create_pair() {
         maker_fee_bps: 10,
         is_disabled: false,
         is_generator_disabled: false,
+        permissioned: false,
     };
 
     let factory_init_msg = InstantiateMsg {
@@ -542,6 +553,7 @@ fn register() {
             maker_fee_bps: 10,
             is_disabled: false,
             is_generator_disabled: false,
+            permissioned: false,
         }],
         token_code_id: 123u64,
         fee_address: Some("maker".to_owned()),

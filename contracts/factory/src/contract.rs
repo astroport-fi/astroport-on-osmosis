@@ -308,6 +308,11 @@ pub fn execute_create_pair(
         .load(deps.storage, pair_type.to_string())
         .map_err(|_| ContractError::PairConfigNotFound {})?;
 
+    let config = CONFIG.load(deps.storage)?;
+    if pair_config.permissioned && info.sender != config.owner {
+        return Err(ContractError::Unauthorized {});
+    }
+
     // Check if pair config is disabled
     if pair_config.is_disabled {
         return Err(ContractError::PairConfigDisabled {});

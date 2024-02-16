@@ -42,6 +42,7 @@ impl FactoryHelper {
                 maker_fee_bps: 5000,
                 is_disabled: false,
                 is_generator_disabled: false,
+                permissioned: false,
             }],
             token_code_id: 0,
             fee_address: None,

@@ -3,8 +3,7 @@
 set -e
 set -o pipefail
 
-# terra: https://github.com/terra-money/wasmd/blob/2308975f45eac299bdf246737674482eaa51051c/x/wasm/types/validation.go#L12
-# injective: https://github.com/InjectiveLabs/wasmd/blob/e087f275712b5f0a798791495dee0e453d67cad3/x/wasm/types/validation.go#L19
+# osmosis v22.0.5: https://github.com/osmosis-labs/wasmd/blob/aba521a80563ceb88d27d14e5d7527735f4aae5d/x/wasm/types/validation.go#L22
 maximum_size=800
 
 for artifact in artifacts/*.wasm; do
