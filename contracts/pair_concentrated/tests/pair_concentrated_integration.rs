@@ -1512,8 +1512,8 @@ fn test_osmosis_specific_queries() {
         .query_wasm_smart::<SpotPriceResponse>(
             &helper.pair_addr,
             &QueryMsg::SpotPrice {
-                quote_asset_denom: helper.assets[&test_coins[1]].to_string(),
-                base_asset_denom: helper.assets[&test_coins[0]].to_string(),
+                quote_asset_denom: helper.assets[&test_coins[0]].to_string(),
+                base_asset_denom: helper.assets[&test_coins[1]].to_string(),
             },
         )
         .unwrap();
@@ -1527,8 +1527,8 @@ fn test_osmosis_specific_queries() {
         .query_wasm_smart::<SpotPriceResponse>(
             &helper.pair_addr,
             &QueryMsg::SpotPrice {
-                quote_asset_denom: helper.assets[&test_coins[0]].to_string(),
-                base_asset_denom: helper.assets[&test_coins[1]].to_string(),
+                quote_asset_denom: helper.assets[&test_coins[1]].to_string(),
+                base_asset_denom: helper.assets[&test_coins[0]].to_string(),
             },
         )
         .unwrap();
