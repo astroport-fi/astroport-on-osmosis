@@ -148,7 +148,15 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
                         observation.price.inv().unwrap_or_default()
                     }
                 })
-                .or_else(|_| try_dec256_into_dec(config.pool_state.price_state.price_scale))?;
+                .or_else(|_| -> StdResult<_> {
+                    let price_scale =
+                        try_dec256_into_dec(config.pool_state.price_state.price_scale)?;
+                    if pool_denoms[0] == quote_asset_denom && pool_denoms[1] == base_asset_denom {
+                        Ok(price_scale)
+                    } else {
+                        Ok(price_scale.inv().unwrap_or_default())
+                    }
+                })?;
 
             to_json_binary(&SpotPriceResponse { spot_price })
         }
