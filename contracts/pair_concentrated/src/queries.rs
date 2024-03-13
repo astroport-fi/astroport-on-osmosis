@@ -1,6 +1,6 @@
 use astroport::asset::{native_asset_info, Asset, AssetInfo, AssetInfoExt};
 use astroport::cosmwasm_ext::{DecimalToInteger, IntegerToDecimal};
-use astroport::observation::query_observation;
+use astroport::observation::{query_observation, try_dec256_into_dec};
 use astroport::pair::{
     ConfigResponse, PoolResponse, ReverseSimulationResponse, SimulationResponse,
 };
@@ -148,7 +148,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
                         observation.price.inv().unwrap_or_default()
                     }
                 })
-                .unwrap_or(Decimal::zero());
+                .or_else(|_| try_dec256_into_dec(config.pool_state.price_state.price_scale))?;
 
             to_json_binary(&SpotPriceResponse { spot_price })
         }
