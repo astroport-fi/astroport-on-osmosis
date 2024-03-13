@@ -177,7 +177,7 @@ dependencies = [
 
 [[package]]
 name = "astroport-pcl-osmo"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "astroport 3.11.1",

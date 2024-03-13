@@ -26,8 +26,8 @@ use astroport_pcl_common::{calc_d, get_xcp};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, coin, ensure, from_json, to_json_binary, Addr, Binary, Decimal, Decimal256, DepsMut, Env,
-    MessageInfo, Reply, Response, StdError, StdResult, SubMsg, Uint128,
+    attr, coin, ensure, from_json, to_json_binary, Addr, Binary, Decimal, Decimal256, DepsMut,
+    Empty, Env, MessageInfo, Reply, Response, StdError, StdResult, SubMsg, Uint128,
 };
 use cw2::set_contract_version;
 use cw_utils::must_pay;
@@ -873,4 +873,23 @@ pub fn update_config(
     CONFIG.save(deps.storage, &config)?;
 
     Ok(Response::new().add_attribute("action", action))
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn migrate(deps: DepsMut, _env: Env, _msg: Empty) -> Result<Response, ContractError> {
+    let contract_version = cw2::get_contract_version(deps.storage)?;
+
+    match contract_version.contract.as_ref() {
+        "astroport-pcl-osmo" => match contract_version.version.as_ref() {
+            "1.0.0" => {}
+            _ => return Err(ContractError::MigrationError {}),
+        },
+        _ => return Err(ContractError::MigrationError {}),
+    };
+
+    Ok(Response::new()
+        .add_attribute("previous_contract_name", &contract_version.contract)
+        .add_attribute("previous_contract_version", &contract_version.version)
+        .add_attribute("new_contract_name", CONTRACT_NAME)
+        .add_attribute("new_contract_version", CONTRACT_VERSION))
 }

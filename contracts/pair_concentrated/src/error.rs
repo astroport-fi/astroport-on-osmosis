@@ -1,10 +1,9 @@
-use cosmwasm_std::{ConversionOverflowError, OverflowError, StdError};
-use thiserror::Error;
-
 use astroport::asset::MINIMUM_LIQUIDITY_AMOUNT;
 use astroport_circular_buffer::error::BufferError;
 use astroport_pcl_common::error::PclError;
+use cosmwasm_std::{ConversionOverflowError, OverflowError, StdError};
 use cw_utils::PaymentError;
+use thiserror::Error;
 
 /// This enum describes pair contract errors
 #[derive(Error, Debug, PartialEq)]
@@ -53,4 +52,7 @@ pub enum ContractError {
 
     #[error("Pool id is already set")]
     PoolIdAlreadySet {},
+
+    #[error("Failed to migrate contract")]
+    MigrationError {},
 }
