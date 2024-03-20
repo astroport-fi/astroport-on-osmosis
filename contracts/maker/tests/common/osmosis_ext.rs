@@ -3,11 +3,13 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use anyhow::Result as AnyResult;
+use astroport::pair::PoolResponse;
 use cosmwasm_schema::schemars::JsonSchema;
 use cosmwasm_schema::serde::de::DeserializeOwned;
 use cosmwasm_std::{
     coin, coins, from_json, to_json_binary, Addr, Api, BankMsg, Binary, BlockInfo, CustomQuery,
-    Querier, QueryRequest, Storage, SubMsgResponse, Uint128, WasmMsg, WasmQuery,
+    Empty, Querier, QuerierWrapper, QueryRequest, Storage, SubMsgResponse, Uint128, WasmMsg,
+    WasmQuery,
 };
 use cw_multi_test::{AppResponse, BankSudo, CosmosRouter, Stargate, WasmSudo};
 use osmosis_std::types::osmosis::cosmwasmpool::v1beta1::{
@@ -16,7 +18,7 @@ use osmosis_std::types::osmosis::cosmwasmpool::v1beta1::{
 };
 use osmosis_std::types::osmosis::poolmanager;
 use osmosis_std::types::osmosis::poolmanager::v1beta1::{
-    MsgSwapExactAmountIn, MsgSwapExactAmountOut,
+    MsgSwapExactAmountIn, MsgSwapExactAmountOut, TotalPoolLiquidityRequest,
 };
 use osmosis_std::types::osmosis::tokenfactory::v1beta1::{
     MsgBurn, MsgCreateDenom, MsgCreateDenomResponse, MsgMint,
@@ -252,7 +254,7 @@ impl Stargate for OsmosisStargate {
         &self,
         _api: &dyn Api,
         _storage: &dyn Storage,
-        _querier: &dyn Querier,
+        querier: &dyn Querier,
         _block: &BlockInfo,
         path: String,
         data: Binary,
@@ -274,6 +276,22 @@ impl Stargate for OsmosisStargate {
                         authorized_quote_denoms: vec![],
                     }),
                 })?)
+            }
+            "/osmosis.poolmanager.v1beta1.Query/TotalPoolLiquidity" => {
+                let inner: TotalPoolLiquidityRequest = data.try_into()?;
+                let contract_address = self.cw_pools.borrow()[&inner.pool_id].clone();
+                let liquidity = QuerierWrapper::<Empty>::new(querier)
+                    .query_wasm_smart::<PoolResponse>(&contract_address, &QueryMsg::Pool {})
+                    .map(|resp| {
+                        resp.assets
+                            .into_iter()
+                            .map(|c| c.as_coin().unwrap().into())
+                            .collect()
+                    })?;
+
+                Ok(to_json_binary(
+                    &poolmanager::v1beta1::TotalPoolLiquidityResponse { liquidity },
+                )?)
             }
             _ => Err(anyhow::anyhow!("Unexpected stargate query request {path}",)),
         }

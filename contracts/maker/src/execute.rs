@@ -9,7 +9,7 @@ use itertools::Itertools;
 use osmosis_std::types::cosmos::base::v1beta1::Coin as OsmoCoin;
 use osmosis_std::types::osmosis::poolmanager::v1beta1::{MsgSwapExactAmountIn, PoolmanagerQuerier};
 
-use astroport_on_osmosis::maker::{ExecuteMsg, PoolRoute, MAX_ALLOWED_SPREAD};
+use astroport_on_osmosis::maker::{CoinWithLimit, ExecuteMsg, PoolRoute, MAX_ALLOWED_SPREAD};
 
 use crate::error::ContractError;
 use crate::reply::POST_COLLECT_REPLY_ID;
@@ -71,7 +71,11 @@ pub fn execute(
     }
 }
 
-pub fn collect(deps: DepsMut, env: Env, assets: Vec<Coin>) -> Result<Response, ContractError> {
+pub fn collect(
+    deps: DepsMut,
+    env: Env,
+    assets: Vec<CoinWithLimit>,
+) -> Result<Response, ContractError> {
     ensure!(!assets.is_empty(), ContractError::EmptyAssets {});
 
     let config = CONFIG.load(deps.storage)?;
@@ -94,9 +98,14 @@ pub fn collect(deps: DepsMut, env: Env, assets: Vec<Coin>) -> Result<Response, C
         let balance = deps
             .querier
             .query_balance(&env.contract.address, &asset.denom)
-            .map(|coin| Coin {
-                amount: asset.amount.min(coin.amount),
-                ..asset
+            .map(|coin| {
+                asset
+                    .amount
+                    .map(|amount| Coin {
+                        denom: coin.denom.to_string(),
+                        amount: amount.min(coin.amount),
+                    })
+                    .unwrap_or(coin)
             })?;
 
         // Skip silently if the balance is zero.
@@ -212,6 +221,13 @@ pub fn set_pool_routes(
     let mut routes_builder = RoutesBuilder::default();
 
     for route in &routes {
+        ensure!(
+            route.denom_in != config.astro_denom,
+            ContractError::AstroInRoute {
+                route: route.clone()
+            }
+        );
+
         // Sanity checks via osmosis pool manager
         let pm_quierier = PoolmanagerQuerier::new(&deps.querier);
         let pool_denoms = pm_quierier
@@ -261,4 +277,184 @@ pub fn set_pool_routes(
     })?;
 
     Ok(Response::new().add_attributes(attrs))
+}
+
+#[cfg(test)]
+mod unit_tests {
+    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+    use cosmwasm_std::Addr;
+
+    use astroport_on_osmosis::maker::{Config, COOLDOWN_LIMITS};
+
+    use super::*;
+
+    #[test]
+    fn collect_basic_tests() {
+        let mut deps = mock_dependencies();
+
+        let assets = vec![];
+        let err = collect(deps.as_mut(), mock_env(), assets).unwrap_err();
+        assert_eq!(err, ContractError::EmptyAssets {});
+
+        let mut env = mock_env();
+        let config = Config {
+            owner: Addr::unchecked("owner"),
+            astro_denom: "astro".to_string(),
+            satellite: Addr::unchecked("satellite"),
+            max_spread: Default::default(),
+            collect_cooldown: Some(60),
+        };
+        CONFIG.save(deps.as_mut().storage, &config).unwrap();
+        LAST_COLLECT_TS
+            .save(deps.as_mut().storage, &env.block.time.seconds())
+            .unwrap();
+        let assets = vec![CoinWithLimit {
+            denom: "uusd".to_string(),
+            amount: None,
+        }];
+        let err = collect(deps.as_mut(), env.clone(), assets.clone()).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::Cooldown {
+                next_collect_ts: env.block.time.seconds() + config.collect_cooldown.unwrap(),
+            }
+        );
+
+        env.block.time = env
+            .block
+            .time
+            .plus_seconds(config.collect_cooldown.unwrap());
+        let err = collect(deps.as_mut(), env.clone(), assets).unwrap_err();
+        assert_eq!(err, ContractError::NothingToCollect {});
+    }
+
+    #[test]
+    fn update_config_basic_tests() {
+        let mut deps = mock_dependencies();
+        let config = Config {
+            owner: Addr::unchecked("owner"),
+            astro_denom: "astro".to_string(),
+            satellite: Addr::unchecked("satellite"),
+            max_spread: Default::default(),
+            collect_cooldown: Some(60),
+        };
+        CONFIG.save(deps.as_mut().storage, &config).unwrap();
+
+        let err = update_config(
+            deps.as_mut(),
+            mock_info("random", &[]),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::Unauthorized {});
+
+        let err = update_config(
+            deps.as_mut(),
+            mock_info(config.owner.as_str(), &[]),
+            Some("1a".to_string()),
+            None,
+            None,
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::Std(StdError::generic_err("Invalid denom length [3,128]: 1a"))
+        );
+
+        let err = update_config(
+            deps.as_mut(),
+            mock_info(config.owner.as_str(), &[]),
+            None,
+            Some("s".to_string()),
+            None,
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::Std(StdError::generic_err("Invalid input: human address too short for this mock implementation (must be >= 3)."))
+        );
+
+        let err = update_config(
+            deps.as_mut(),
+            mock_info(config.owner.as_str(), &[]),
+            None,
+            None,
+            Some(Decimal::percent(99)),
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::MaxSpreadTooHigh {});
+
+        let err = update_config(
+            deps.as_mut(),
+            mock_info(config.owner.as_str(), &[]),
+            None,
+            None,
+            None,
+            Some(COOLDOWN_LIMITS.end() + 1),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::IncorrectCooldown { min: 30, max: 600 });
+    }
+
+    #[test]
+    fn set_routes_basic_tests() {
+        let mut deps = mock_dependencies();
+        let config = Config {
+            owner: Addr::unchecked("owner"),
+            astro_denom: "astro".to_string(),
+            satellite: Addr::unchecked("satellite"),
+            max_spread: Default::default(),
+            collect_cooldown: Some(60),
+        };
+        CONFIG.save(deps.as_mut().storage, &config).unwrap();
+
+        let routes = vec![PoolRoute {
+            denom_in: "uatom".to_string(),
+            denom_out: "utest".to_string(),
+            pool_id: 1,
+        }];
+        let err =
+            set_pool_routes(deps.as_mut(), mock_info("random", &[]), routes.clone()).unwrap_err();
+        assert_eq!(err, ContractError::Unauthorized {});
+
+        let routes = vec![
+            PoolRoute {
+                denom_in: "uatom".to_string(),
+                denom_out: "utest".to_string(),
+                pool_id: 1,
+            },
+            PoolRoute {
+                denom_in: "uatom".to_string(),
+                denom_out: "ucoin".to_string(),
+                pool_id: 2,
+            },
+        ];
+        let err = set_pool_routes(
+            deps.as_mut(),
+            mock_info(config.owner.as_str(), &[]),
+            routes.clone(),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::DuplicatedRoutes {});
+
+        let wrong_route = PoolRoute {
+            denom_in: "astro".to_string(),
+            denom_out: "utest".to_string(),
+            pool_id: 1,
+        };
+        let routes = vec![wrong_route.clone()];
+        let err = set_pool_routes(
+            deps.as_mut(),
+            mock_info(config.owner.as_str(), &[]),
+            routes.clone(),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::AstroInRoute { route: wrong_route });
+    }
 }

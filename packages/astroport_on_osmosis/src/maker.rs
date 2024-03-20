@@ -38,12 +38,18 @@ pub struct PoolRoute {
 }
 
 #[cw_serde]
+pub struct CoinWithLimit {
+    pub denom: String,
+    pub amount: Option<Uint128>,
+}
+
+#[cw_serde]
 pub enum ExecuteMsg {
     /// Collects and swaps fee tokens to ASTRO
     Collect {
-        /// Coins to swap to ASTRO. coin.amount is the amount to swap. If amount is more than the balance,
-        /// it will swap the whole balance.
-        assets: Vec<Coin>,
+        /// Coins to swap to ASTRO. coin.amount is the amount to swap. If amount is omitted then whole balance will be used.
+        /// If amount is more than the balance, it will swap the whole balance.
+        assets: Vec<CoinWithLimit>,
     },
     /// Updates general settings. Only the owner can execute this.
     UpdateConfig {

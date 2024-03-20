@@ -108,6 +108,10 @@ impl RoutesBuilder {
         let mut routes = vec![];
 
         for _ in 0..MAX_SWAPS_DEPTH {
+            if prev_denom == astro_denom {
+                break;
+            }
+
             let step = if let Some(found) = self.routes_cache.get(&prev_denom).cloned() {
                 found
             } else {

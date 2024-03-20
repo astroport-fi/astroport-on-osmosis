@@ -15,15 +15,19 @@ use cosmwasm_std::{
     MemoryStorage, Storage,
 };
 use cw_multi_test::{
-    no_init, AddressGenerator, App, AppResponse, BankKeeper, BasicAppBuilder, Contract,
+    AddressGenerator, App, AppResponse, BankKeeper, BankSudo, BasicAppBuilder, Contract,
     ContractWrapper, DistributionKeeper, Executor, FailingModule, StakeKeeper, WasmKeeper,
 };
 use cw_storage_plus::Item;
 use derivative::Derivative;
+use itertools::Itertools;
 
+use astroport_on_osmosis::maker;
+use astroport_on_osmosis::maker::{PoolRoute, SwapRouteResponse};
 use astroport_on_osmosis::pair_pcl::ExecuteMsg;
 use astroport_pcl_osmo::contract::{execute, instantiate, reply};
 use astroport_pcl_osmo::queries::query;
+use astroport_pcl_osmo::state::POOL_ID;
 use astroport_pcl_osmo::sudo::sudo;
 
 use crate::common::osmosis_ext::OsmosisStargate;
@@ -82,16 +86,16 @@ pub fn osmo_create_pair_fee() -> Vec<Coin> {
     coins(1000_000000, "uosmo")
 }
 
-fn common_pcl_params() -> ConcentratedPoolParams {
+fn common_pcl_params(price_scale: Decimal) -> ConcentratedPoolParams {
     ConcentratedPoolParams {
-        amp: f64_to_dec(40f64),
+        amp: f64_to_dec(10f64),
         gamma: f64_to_dec(0.000145),
         mid_fee: f64_to_dec(0.0026),
         out_fee: f64_to_dec(0.0045),
         fee_gamma: f64_to_dec(0.00023),
         repeg_profit_threshold: f64_to_dec(0.000002),
         min_price_scale_delta: f64_to_dec(0.000146),
-        price_scale: Decimal::one(),
+        price_scale,
         ma_half_time: 600,
         track_asset_balances: None,
         fee_share: None,
@@ -146,7 +150,12 @@ impl Helper {
         let mut app = BasicAppBuilder::new()
             .with_stargate(OsmosisStargate::default())
             .with_wasm(wasm_keeper)
-            .build(no_init);
+            .build(|router, _, storage| {
+                router
+                    .bank
+                    .init_balance(storage, owner, coins(1_000_000_000_000, "uosmo"))
+                    .unwrap()
+            });
 
         let pair_code_id = app.store_code(pair_contract());
         let factory_code_id = app.store_code(factory_contract());
@@ -155,7 +164,7 @@ impl Helper {
         let maker = app.instantiate_contract(
             maker_code_id,
             owner.clone(),
-            &astroport_maker_osmosis::instantiate::InstantiateMsg {
+            &maker::InstantiateMsg {
                 owner: owner.to_string(),
                 astro_denom: ASTRO_DENOM.to_string(),
                 satellite: "satellite".to_string(),
@@ -182,20 +191,20 @@ impl Helper {
             )
             .unwrap();
 
-        let init_msg = astroport::factory::InstantiateMsg {
+        let init_msg = factory::InstantiateMsg {
             fee_address: Some(maker.to_string()),
             pair_configs: vec![PairConfig {
                 code_id: pair_code_id,
-                maker_fee_bps: 5000,
+                maker_fee_bps: 2500,
                 total_fee_bps: 0u16, // Concentrated pair does not use this field,
                 pair_type: PairType::Custom("concentrated".to_string()),
                 is_disabled: false,
                 is_generator_disabled: false,
             }],
-            token_code_id,
+            token_code_id: 0,
             generator_address: None,
             owner: owner.to_string(),
-            whitelist_code_id: 234u64,
+            whitelist_code_id: 0,
             coin_registry_address: coin_registry.to_string(),
         };
 
@@ -221,36 +230,95 @@ impl Helper {
         })
     }
 
-    pub fn create_pair(
+    pub fn create_and_seed_pair(
         &mut self,
-        asset_infos: &[AssetInfo],
-    ) -> AnyResult<PairInfo> {
-        let native_coins = asset_infos.iter()
+        initial_liquidity: [Coin; 2],
+    ) -> AnyResult<(PairInfo, u64)> {
+        let native_coins = initial_liquidity
+            .iter()
+            .cloned()
+            .map(|x| (x.denom.clone(), 6))
+            .collect::<Vec<_>>();
+        let asset_infos = native_coins
+            .iter()
+            .map(|(denom, _)| AssetInfo::native(denom))
+            .collect_vec();
 
         self.app
             .execute_contract(
                 self.owner.clone(),
                 self.coin_registry.clone(),
-                &astroport::native_coin_registry::ExecuteMsg::Add {
-                    native_coins,
-                },
+                &astroport::native_coin_registry::ExecuteMsg::Add { native_coins },
                 &[],
             )
             .unwrap();
 
-        let asset_infos = asset_infos.to_vec();
-        self.app
+        let price_scale =
+            Decimal::from_ratio(initial_liquidity[0].amount, initial_liquidity[1].amount);
+        let owner = self.owner.clone();
+
+        let pair_info = self
+            .app
             .execute_contract(
-                Addr::unchecked("permissionless"),
+                owner.clone(),
                 self.factory.clone(),
                 &factory::ExecuteMsg::CreatePair {
                     pair_type: PairType::Custom("concentrated".to_string()),
                     asset_infos: asset_infos.clone(),
-                    init_params: Some(to_json_binary(&common_pcl_params()).unwrap()),
+                    init_params: Some(to_json_binary(&common_pcl_params(price_scale)).unwrap()),
                 },
                 &osmo_create_pair_fee(),
             )
-            .map(|_| self.query_pair_info(&asset_infos))
+            .map(|_| self.query_pair_info(&asset_infos))?;
+
+        let provide_assets = [
+            Asset::native(&initial_liquidity[0].denom, initial_liquidity[0].amount),
+            Asset::native(&initial_liquidity[1].denom, initial_liquidity[1].amount),
+        ];
+
+        self.give_me_money(&provide_assets, &owner);
+        self.provide(&pair_info.contract_addr, &owner, &provide_assets)
+            .unwrap();
+
+        let pool_id = POOL_ID
+            .query(&self.app.wrap(), pair_info.contract_addr.clone())
+            .unwrap();
+
+        Ok((pair_info, pool_id))
+    }
+
+    pub fn set_pool_routes(&mut self, pool_routes: Vec<PoolRoute>) -> AnyResult<AppResponse> {
+        self.app.execute_contract(
+            self.owner.clone(),
+            self.maker.clone(),
+            &maker::ExecuteMsg::SetPoolRoutes(pool_routes),
+            &[],
+        )
+    }
+
+    pub fn query_route(&self, denom_in: &str, denom_out: &str) -> Vec<SwapRouteResponse> {
+        self.app
+            .wrap()
+            .query_wasm_smart(
+                &self.maker,
+                &maker::QueryMsg::Route {
+                    denom_in: denom_in.to_string(),
+                    denom_out: denom_out.to_string(),
+                },
+            )
+            .unwrap()
+    }
+
+    pub fn query_pair_info(&self, asset_infos: &[AssetInfo]) -> PairInfo {
+        self.app
+            .wrap()
+            .query_wasm_smart(
+                &self.factory,
+                &factory::QueryMsg::Pair {
+                    asset_infos: asset_infos.to_vec(),
+                },
+            )
+            .unwrap()
     }
 
     pub fn provide(
@@ -309,14 +377,20 @@ impl Helper {
     }
 
     pub fn give_me_money(&mut self, assets: &[Asset], recipient: &Addr) {
-        let funds =
-            assets.mock_coins_sent(&mut self.app, &self.owner, recipient, SendType::Transfer);
+        let funds = assets
+            .iter()
+            .map(|x| x.as_coin().unwrap())
+            .collect::<Vec<_>>();
 
-        if !funds.is_empty() {
-            self.app
-                .send_tokens(self.owner.clone(), recipient.clone(), &funds)
-                .unwrap();
-        }
+        self.app
+            .sudo(
+                BankSudo::Mint {
+                    to_address: recipient.to_string(),
+                    amount: funds,
+                }
+                .into(),
+            )
+            .unwrap();
     }
 }
 

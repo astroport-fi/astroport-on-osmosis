@@ -1,7 +1,7 @@
 use cosmwasm_std::{CheckedMultiplyRatioError, OverflowError, StdError};
 use thiserror::Error;
 
-use astroport_on_osmosis::maker::{MAX_ALLOWED_SPREAD, MAX_SWAPS_DEPTH};
+use astroport_on_osmosis::maker::{PoolRoute, MAX_ALLOWED_SPREAD, MAX_SWAPS_DEPTH};
 
 #[derive(Error, Debug, PartialEq)]
 pub enum ContractError {
@@ -32,8 +32,8 @@ pub enum ContractError {
     #[error("Message contains duplicated routes")]
     DuplicatedRoutes {},
 
-    #[error("Route for {from_denom} contains ASTRO denom")]
-    AstroInRoute { from_denom: String },
+    #[error("Route cannot start with ASTRO. Error in route: {route:?}")]
+    AstroInRoute { route: PoolRoute },
 
     #[error("No registered route for {denom}")]
     RouteNotFound { denom: String },
