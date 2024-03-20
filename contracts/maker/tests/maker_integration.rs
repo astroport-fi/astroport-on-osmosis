@@ -1,8 +1,11 @@
-use cosmwasm_std::{coin, Addr};
+use astroport::asset::Asset;
+use astroport::pair::ExecuteMsg;
+use cosmwasm_std::{coin, Addr, Uint128};
+use cw_multi_test::Executor;
 use itertools::Itertools;
 
 use astroport_maker_osmosis::error::ContractError;
-use astroport_on_osmosis::maker::{PoolRoute, SwapRouteResponse, MAX_SWAPS_DEPTH};
+use astroport_on_osmosis::maker::{CoinWithLimit, PoolRoute, SwapRouteResponse, MAX_SWAPS_DEPTH};
 
 use crate::common::helper::{Helper, ASTRO_DENOM};
 
@@ -227,4 +230,338 @@ fn check_set_routes() {
             route_taken: "coin0 -> coin1 -> coin2 -> coin3 -> coin4 -> coin5".to_string()
         }
     );
+}
+
+#[test]
+fn test_collect() {
+    let owner = Addr::unchecked("owner");
+    let mut helper = Helper::new(&owner).unwrap();
+
+    let (_, astro_pool_id) = helper
+        .create_and_seed_pair([
+            coin(1_000_000_000000, "uusd"),
+            coin(1_000_000_000000, ASTRO_DENOM),
+        ])
+        .unwrap();
+
+    helper
+        .set_pool_routes(vec![PoolRoute {
+            denom_in: "uusd".to_string(),
+            denom_out: ASTRO_DENOM.to_string(),
+            pool_id: astro_pool_id,
+        }])
+        .unwrap();
+
+    // mock received fees
+    let maker = helper.maker.clone();
+    helper.give_me_money(&[Asset::native("uusd", 1_000000u64)], &maker);
+
+    helper
+        .collect(vec![CoinWithLimit {
+            denom: "uusd".to_string(),
+            amount: None,
+        }])
+        .unwrap();
+
+    let uusd_bal = helper
+        .app
+        .wrap()
+        .query_balance(&helper.maker, "uusd")
+        .unwrap();
+    assert_eq!(uusd_bal.amount.u128(), 0);
+
+    let astro_bal = helper
+        .app
+        .wrap()
+        .query_balance(&helper.satellite, ASTRO_DENOM)
+        .unwrap();
+    assert_eq!(astro_bal.amount.u128(), 998_048);
+
+    let (_, pool_1) = helper
+        .create_and_seed_pair([
+            coin(1_000_000_000000, "coin_a"),
+            coin(1_000_000_000000, "uusd"),
+        ])
+        .unwrap();
+    let (_, pool_2) = helper
+        .create_and_seed_pair([
+            coin(1_000_000_000000, "coin_a"),
+            coin(1_000_000_000000, "coin_b"),
+        ])
+        .unwrap();
+    let (_, pool_3) = helper
+        .create_and_seed_pair([
+            coin(1_000_000_000000, "coin_c"),
+            coin(1_000_000_000000, "uusd"),
+        ])
+        .unwrap();
+
+    // Set routes
+    //                     coin_c
+    //                      |
+    // coin_b -> coin_a -> uusd -> astro
+    helper
+        .set_pool_routes(vec![
+            PoolRoute {
+                denom_in: "coin_a".to_string(),
+                denom_out: "uusd".to_string(),
+                pool_id: pool_1,
+            },
+            PoolRoute {
+                denom_in: "coin_b".to_string(),
+                denom_out: "coin_a".to_string(),
+                pool_id: pool_2,
+            },
+            PoolRoute {
+                denom_in: "coin_c".to_string(),
+                denom_out: "uusd".to_string(),
+                pool_id: pool_3,
+            },
+        ])
+        .unwrap();
+
+    helper.give_me_money(&[Asset::native("coin_a", 1_000000u64)], &maker);
+    helper.give_me_money(&[Asset::native("coin_b", 1_000000u64)], &maker);
+    helper.give_me_money(&[Asset::native("coin_c", 1_000000u64)], &maker);
+
+    helper
+        .collect(vec![
+            CoinWithLimit {
+                denom: "coin_a".to_string(),
+                amount: None,
+            },
+            CoinWithLimit {
+                denom: "coin_b".to_string(),
+                amount: None,
+            },
+            CoinWithLimit {
+                denom: "coin_c".to_string(),
+                amount: None,
+            },
+        ])
+        .unwrap();
+
+    let coin_a_bal = helper
+        .app
+        .wrap()
+        .query_balance(&helper.maker, "coin_a")
+        .unwrap();
+    assert_eq!(coin_a_bal.amount.u128(), 649); // tiny fee left after swaps
+    let coin_b_bal = helper
+        .app
+        .wrap()
+        .query_balance(&helper.maker, "coin_b")
+        .unwrap();
+    assert_eq!(coin_b_bal.amount.u128(), 0);
+    let coin_c_bal = helper
+        .app
+        .wrap()
+        .query_balance(&helper.maker, "coin_c")
+        .unwrap();
+    assert_eq!(coin_c_bal.amount.u128(), 0);
+
+    // Satellite has received fees converted to astro
+    let astro_bal = helper
+        .app
+        .wrap()
+        .query_balance(&helper.satellite, ASTRO_DENOM)
+        .unwrap();
+    assert_eq!(astro_bal.amount.u128(), 3_981818);
+
+    // Check collect with limit
+    helper.give_me_money(&[Asset::native("coin_c", 1_000000u64)], &maker);
+    helper
+        .collect(vec![CoinWithLimit {
+            denom: "coin_c".to_string(),
+            amount: Some(500u128.into()),
+        }])
+        .unwrap();
+    let coin_c_bal = helper
+        .app
+        .wrap()
+        .query_balance(&helper.maker, "coin_c")
+        .unwrap();
+    assert_eq!(coin_c_bal.amount.u128(), 999_500);
+
+    // Try to set limit higher than balance
+    helper
+        .collect(vec![CoinWithLimit {
+            denom: "coin_c".to_string(),
+            amount: Some(1_000_000u128.into()),
+        }])
+        .unwrap();
+    let coin_c_bal = helper
+        .app
+        .wrap()
+        .query_balance(&helper.maker, "coin_c")
+        .unwrap();
+    assert_eq!(coin_c_bal.amount.u128(), 0);
+
+    // query all routes
+    let routes: Vec<PoolRoute> = helper
+        .app
+        .wrap()
+        .query_wasm_smart(
+            &helper.maker,
+            &astroport_on_osmosis::maker::QueryMsg::Routes {
+                start_after: None,
+                limit: Some(100),
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        routes,
+        vec![
+            PoolRoute {
+                denom_in: "coin_a".to_string(),
+                denom_out: "uusd".to_string(),
+                pool_id: pool_1
+            },
+            PoolRoute {
+                denom_in: "coin_b".to_string(),
+                denom_out: "coin_a".to_string(),
+                pool_id: pool_2
+            },
+            PoolRoute {
+                denom_in: "coin_c".to_string(),
+                denom_out: "uusd".to_string(),
+                pool_id: pool_3
+            },
+            PoolRoute {
+                denom_in: "uusd".to_string(),
+                denom_out: "astro".to_string(),
+                pool_id: astro_pool_id
+            }
+        ]
+    );
+
+    let estimated_astro_out: Uint128 = helper
+        .app
+        .wrap()
+        .query_wasm_smart(
+            &helper.maker,
+            &astroport_on_osmosis::maker::QueryMsg::EstimateExactInSwap {
+                coin_in: coin(1_000000u128, "uusd"),
+            },
+        )
+        .unwrap();
+    assert_eq!(estimated_astro_out.u128(), 1_000000);
+}
+
+#[test]
+fn update_owner() {
+    let owner = Addr::unchecked("owner");
+    let mut helper = Helper::new(&owner).unwrap();
+
+    let new_owner = String::from("new_owner");
+
+    // New owner
+    let msg = ExecuteMsg::ProposeNewOwner {
+        owner: new_owner.clone(),
+        expires_in: 100, // seconds
+    };
+
+    // Unauthorized check
+    let err = helper
+        .app
+        .execute_contract(
+            Addr::unchecked("not_owner"),
+            helper.maker.clone(),
+            &msg,
+            &[],
+        )
+        .unwrap_err();
+    assert_eq!(err.root_cause().to_string(), "Generic error: Unauthorized");
+
+    // Claim before proposal
+    let err = helper
+        .app
+        .execute_contract(
+            Addr::unchecked(new_owner.clone()),
+            helper.maker.clone(),
+            &ExecuteMsg::ClaimOwnership {},
+            &[],
+        )
+        .unwrap_err();
+    assert_eq!(
+        err.root_cause().to_string(),
+        "Generic error: Ownership proposal not found"
+    );
+
+    // Propose new owner
+    helper
+        .app
+        .execute_contract(
+            Addr::unchecked(&helper.owner),
+            helper.maker.clone(),
+            &msg,
+            &[],
+        )
+        .unwrap();
+
+    // Claim from invalid addr
+    let err = helper
+        .app
+        .execute_contract(
+            Addr::unchecked("invalid_addr"),
+            helper.maker.clone(),
+            &ExecuteMsg::ClaimOwnership {},
+            &[],
+        )
+        .unwrap_err();
+    assert_eq!(err.root_cause().to_string(), "Generic error: Unauthorized");
+
+    // Drop ownership proposal
+    let err = helper
+        .app
+        .execute_contract(
+            Addr::unchecked("invalid_addr"),
+            helper.maker.clone(),
+            &ExecuteMsg::DropOwnershipProposal {},
+            &[],
+        )
+        .unwrap_err();
+    assert_eq!(err.root_cause().to_string(), "Generic error: Unauthorized");
+
+    helper
+        .app
+        .execute_contract(
+            helper.owner.clone(),
+            helper.maker.clone(),
+            &ExecuteMsg::DropOwnershipProposal {},
+            &[],
+        )
+        .unwrap();
+
+    // Propose new owner
+    helper
+        .app
+        .execute_contract(
+            Addr::unchecked(&helper.owner),
+            helper.maker.clone(),
+            &msg,
+            &[],
+        )
+        .unwrap();
+
+    // Claim ownership
+    helper
+        .app
+        .execute_contract(
+            Addr::unchecked(new_owner.clone()),
+            helper.maker.clone(),
+            &ExecuteMsg::ClaimOwnership {},
+            &[],
+        )
+        .unwrap();
+
+    let config: astroport_on_osmosis::maker::Config = helper
+        .app
+        .wrap()
+        .query_wasm_smart(
+            &helper.maker,
+            &astroport_on_osmosis::maker::QueryMsg::Config {},
+        )
+        .unwrap();
+    assert_eq!(config.owner.to_string(), new_owner)
 }

@@ -1,4 +1,5 @@
 use cosmwasm_std::{CheckedMultiplyRatioError, OverflowError, StdError};
+use cw_utils::PaymentError;
 use thiserror::Error;
 
 use astroport_on_osmosis::maker::{PoolRoute, MAX_ALLOWED_SPREAD, MAX_SWAPS_DEPTH};
@@ -10,6 +11,9 @@ pub enum ContractError {
 
     #[error("{0}")]
     OverflowError(#[from] OverflowError),
+
+    #[error("{0}")]
+    PaymentError(#[from] PaymentError),
 
     #[error("{0}")]
     CheckedMultiplyRatioError(#[from] CheckedMultiplyRatioError),

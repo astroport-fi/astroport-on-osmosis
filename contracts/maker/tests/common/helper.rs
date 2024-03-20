@@ -11,8 +11,8 @@ use astroport::pair_concentrated::ConcentratedPoolParams;
 use astroport::{factory, pair};
 use cosmwasm_std::testing::MockApi;
 use cosmwasm_std::{
-    coins, to_json_binary, Addr, Api, Coin, Decimal, Empty, GovMsg, IbcMsg, IbcQuery,
-    MemoryStorage, Storage,
+    coins, to_json_binary, Addr, Api, Binary, Coin, Decimal, Deps, DepsMut, Empty, Env, GovMsg,
+    IbcMsg, IbcQuery, MemoryStorage, MessageInfo, Response, StdResult, Storage,
 };
 use cw_multi_test::{
     AddressGenerator, App, AppResponse, BankKeeper, BankSudo, BasicAppBuilder, Contract,
@@ -23,7 +23,7 @@ use derivative::Derivative;
 use itertools::Itertools;
 
 use astroport_on_osmosis::maker;
-use astroport_on_osmosis::maker::{PoolRoute, SwapRouteResponse};
+use astroport_on_osmosis::maker::{CoinWithLimit, PoolRoute, SwapRouteResponse};
 use astroport_on_osmosis::pair_pcl::ExecuteMsg;
 use astroport_pcl_osmo::contract::{execute, instantiate, reply};
 use astroport_pcl_osmo::queries::query;
@@ -80,6 +80,24 @@ fn maker_contract() -> Box<dyn Contract<Empty>> {
         )
         .with_reply_empty(astroport_maker_osmosis::reply::reply),
     )
+}
+
+fn mock_satellite_contract() -> Box<dyn Contract<Empty>> {
+    let instantiate = |_: DepsMut, _: Env, _: MessageInfo, _: Empty| -> StdResult<Response> {
+        Ok(Default::default())
+    };
+    let execute = |_: DepsMut,
+                   _: Env,
+                   _: MessageInfo,
+                   _: astro_satellite_package::ExecuteMsg|
+     -> StdResult<Response> { Ok(Default::default()) };
+    let empty_query = |_: Deps, _: Env, _: Empty| -> StdResult<Binary> { unimplemented!() };
+
+    Box::new(ContractWrapper::new_with_empty(
+        execute,
+        instantiate,
+        empty_query,
+    ))
 }
 
 pub fn osmo_create_pair_fee() -> Vec<Coin> {
@@ -141,6 +159,7 @@ pub struct Helper {
     pub coin_registry: Addr,
     pub factory: Addr,
     pub maker: Addr,
+    pub satellite: Addr,
 }
 
 impl Helper {
@@ -159,6 +178,16 @@ impl Helper {
 
         let pair_code_id = app.store_code(pair_contract());
         let factory_code_id = app.store_code(factory_contract());
+        let satellite_code_id = app.store_code(mock_satellite_contract());
+
+        let satellite = app.instantiate_contract(
+            satellite_code_id,
+            owner.clone(),
+            &Empty {},
+            &[],
+            "Satellite",
+            None,
+        )?;
 
         let maker_code_id = app.store_code(maker_contract());
         let maker = app.instantiate_contract(
@@ -167,7 +196,7 @@ impl Helper {
             &maker::InstantiateMsg {
                 owner: owner.to_string(),
                 astro_denom: ASTRO_DENOM.to_string(),
-                satellite: "satellite".to_string(),
+                satellite: satellite.to_string(),
                 max_spread: Decimal::percent(10),
                 collect_cooldown: None,
             },
@@ -227,6 +256,7 @@ impl Helper {
             coin_registry,
             factory,
             maker,
+            satellite,
         })
     }
 
@@ -292,6 +322,15 @@ impl Helper {
             self.owner.clone(),
             self.maker.clone(),
             &maker::ExecuteMsg::SetPoolRoutes(pool_routes),
+            &[],
+        )
+    }
+
+    pub fn collect(&mut self, assets: Vec<CoinWithLimit>) -> AnyResult<AppResponse> {
+        self.app.execute_contract(
+            self.owner.clone(),
+            self.maker.clone(),
+            &maker::ExecuteMsg::Collect { assets },
             &[],
         )
     }

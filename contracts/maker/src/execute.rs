@@ -3,10 +3,11 @@ use astroport::common::{claim_ownership, drop_ownership_proposal, propose_new_ow
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    attr, ensure, Coin, Decimal, DepsMut, Env, MessageInfo, ReplyOn, Response, StdError, SubMsg,
+    attr, coin, ensure, Coin, Decimal, DepsMut, Env, MessageInfo, ReplyOn, Response, StdError,
+    SubMsg,
 };
+use cw_utils::nonpayable;
 use itertools::Itertools;
-use osmosis_std::types::cosmos::base::v1beta1::Coin as OsmoCoin;
 use osmosis_std::types::osmosis::poolmanager::v1beta1::{MsgSwapExactAmountIn, PoolmanagerQuerier};
 
 use astroport_on_osmosis::maker::{CoinWithLimit, ExecuteMsg, PoolRoute, MAX_ALLOWED_SPREAD};
@@ -23,6 +24,9 @@ pub fn execute(
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
+    // All maker endpoints are non-payable
+    nonpayable(&info)?;
+
     match msg {
         ExecuteMsg::Collect { assets } => collect(deps, env, assets),
         ExecuteMsg::UpdateConfig {
@@ -132,10 +136,7 @@ pub fn collect(
         let swap_msg = MsgSwapExactAmountIn {
             sender: env.contract.address.to_string(),
             routes: built_routes.routes,
-            token_in: Some(OsmoCoin {
-                denom: balance.denom.clone(),
-                amount: balance.amount.to_string(),
-            }),
+            token_in: Some(coin(balance.amount.u128(), balance.denom.clone()).into()),
             token_out_min_amount: min_out_amount.to_string(),
         };
         messages.push(SubMsg::new(swap_msg));
@@ -282,7 +283,8 @@ pub fn set_pool_routes(
 #[cfg(test)]
 mod unit_tests {
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::Addr;
+    use cosmwasm_std::{coins, Addr};
+    use cw_utils::PaymentError;
 
     use astroport_on_osmosis::maker::{Config, COOLDOWN_LIMITS};
 
@@ -340,13 +342,16 @@ mod unit_tests {
         };
         CONFIG.save(deps.as_mut().storage, &config).unwrap();
 
-        let err = update_config(
+        let err = execute(
             deps.as_mut(),
+            mock_env(),
             mock_info("random", &[]),
-            None,
-            None,
-            None,
-            None,
+            ExecuteMsg::UpdateConfig {
+                astro_denom: None,
+                fee_receiver: None,
+                max_spread: None,
+                collect_cooldown: None,
+            },
         )
         .unwrap_err();
         assert_eq!(err, ContractError::Unauthorized {});
@@ -400,6 +405,16 @@ mod unit_tests {
         )
         .unwrap_err();
         assert_eq!(err, ContractError::IncorrectCooldown { min: 30, max: 600 });
+
+        update_config(
+            deps.as_mut(),
+            mock_info(config.owner.as_str(), &[]),
+            Some("new_astro".to_string()),
+            Some("new_fee_receiver".to_string()),
+            Some(Decimal::percent(10)),
+            Some(*COOLDOWN_LIMITS.start()),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -456,5 +471,22 @@ mod unit_tests {
         )
         .unwrap_err();
         assert_eq!(err, ContractError::AstroInRoute { route: wrong_route });
+    }
+
+    #[test]
+    fn test_nonpayable() {
+        let mut deps = mock_dependencies();
+
+        let res = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("test", &coins(1, "uosmo")),
+            ExecuteMsg::Collect { assets: vec![] },
+        )
+        .unwrap_err();
+        assert_eq!(
+            res,
+            ContractError::PaymentError(PaymentError::NonPayable {})
+        );
     }
 }

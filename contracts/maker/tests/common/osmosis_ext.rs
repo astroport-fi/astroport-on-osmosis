@@ -23,10 +23,13 @@ use osmosis_std::types::osmosis::poolmanager::v1beta1::{
 use osmosis_std::types::osmosis::tokenfactory::v1beta1::{
     MsgBurn, MsgCreateDenom, MsgCreateDenomResponse, MsgMint,
 };
+use osmosis_std::types::osmosis::twap::v1beta1::{
+    ArithmeticTwapToNowRequest, ArithmeticTwapToNowResponse,
+};
 
 use astroport_on_osmosis::pair_pcl;
 use astroport_on_osmosis::pair_pcl::{
-    GetSwapFeeResponse, QueryMsg, SwapExactAmountOutResponseData,
+    GetSwapFeeResponse, QueryMsg, SwapExactAmountInResponseData, SwapExactAmountOutResponseData,
 };
 
 #[derive(Default)]
@@ -139,34 +142,63 @@ impl Stargate for OsmosisStargate {
             }
             MsgSwapExactAmountIn::TYPE_URL => {
                 let pm_msg: MsgSwapExactAmountIn = value.try_into()?;
-                let token_in = pm_msg.token_in.expect("token_in must be set!");
+                let token_in_data = pm_msg.token_in.expect("token_in must be set!");
+                let mut token_in = coin(token_in_data.amount.parse()?, token_in_data.denom);
 
-                let contract_addr =
-                    Addr::unchecked(&self.cw_pools.borrow()[&pm_msg.routes[0].pool_id]);
+                let app_responses = pm_msg
+                    .routes
+                    .into_iter()
+                    .map(|route| {
+                        let contract_addr =
+                            Addr::unchecked(&self.cw_pools.borrow()[&route.pool_id]);
 
-                // Osmosis always performs this query before calling a contract.
-                let res = router
-                    .query(
-                        api,
-                        storage,
-                        block,
-                        QueryRequest::Wasm(WasmQuery::Smart {
-                            contract_addr: contract_addr.to_string(),
-                            msg: to_json_binary(&QueryMsg::GetSwapFee {}).unwrap(),
-                        }),
-                    )
-                    .unwrap();
+                        // Osmosis always performs this query before calling a contract.
+                        let res = router
+                            .query(
+                                api,
+                                storage,
+                                block,
+                                QueryRequest::Wasm(WasmQuery::Smart {
+                                    contract_addr: contract_addr.to_string(),
+                                    msg: to_json_binary(&QueryMsg::GetSwapFee {}).unwrap(),
+                                }),
+                            )
+                            .unwrap();
+                        let swap_fee = from_json::<GetSwapFeeResponse>(&res)?.swap_fee;
 
-                let inner_contract_msg = pair_pcl::SudoMessage::SwapExactAmountIn {
-                    sender: pm_msg.sender.to_string(),
-                    token_in: coin(token_in.amount.parse()?, token_in.denom),
-                    token_out_denom: pm_msg.routes[0].token_out_denom.clone(),
-                    token_out_min_amount: pm_msg.token_out_min_amount.parse()?,
-                    swap_fee: from_json::<GetSwapFeeResponse>(&res)?.swap_fee,
-                };
+                        // Send funds from sender to contract
+                        router.execute(
+                            api,
+                            storage,
+                            block,
+                            Addr::unchecked(&pm_msg.sender),
+                            BankMsg::Send {
+                                to_address: contract_addr.to_string(),
+                                amount: vec![token_in.clone()],
+                            }
+                            .into(),
+                        )?;
 
-                let wasm_sudo_msg = WasmSudo::new(&contract_addr, &inner_contract_msg)?;
-                router.sudo(api, storage, block, wasm_sudo_msg.into())
+                        let inner_contract_msg = pair_pcl::SudoMessage::SwapExactAmountIn {
+                            sender: pm_msg.sender.to_string(),
+                            token_in: token_in.clone(),
+                            token_out_denom: route.token_out_denom.clone(),
+                            token_out_min_amount: pm_msg.token_out_min_amount.parse()?,
+                            swap_fee,
+                        };
+
+                        let wasm_sudo_msg = WasmSudo::new(&contract_addr, &inner_contract_msg)?;
+                        let res = router.sudo(api, storage, block, wasm_sudo_msg.into())?;
+
+                        let res_data: SwapExactAmountInResponseData =
+                            from_json(res.data.as_ref().unwrap())?;
+                        token_in = coin(res_data.token_out_amount.u128(), route.token_out_denom);
+
+                        Ok(res)
+                    })
+                    .collect::<AnyResult<Vec<AppResponse>>>()?;
+
+                Ok(app_responses.last().cloned().unwrap())
             }
             MsgSwapExactAmountOut::TYPE_URL => {
                 let pm_msg: MsgSwapExactAmountOut = value.try_into()?;
@@ -292,6 +324,20 @@ impl Stargate for OsmosisStargate {
                 Ok(to_json_binary(
                     &poolmanager::v1beta1::TotalPoolLiquidityResponse { liquidity },
                 )?)
+            }
+            "/osmosis.twap.v1beta1.Query/ArithmeticTwapToNow" => {
+                let inner: ArithmeticTwapToNowRequest = data.try_into()?;
+
+                // We dont reimplement whole twap logic from osmosis and returning EMA oracle price from PCL
+
+                let contract_address = self.cw_pools.borrow()[&inner.pool_id].clone();
+                let querier = QuerierWrapper::<Empty>::new(querier);
+                let pcl_config = astroport_pcl_osmo::state::CONFIG
+                    .query(&querier, Addr::unchecked(contract_address))?;
+
+                Ok(to_json_binary(&ArithmeticTwapToNowResponse {
+                    arithmetic_twap: pcl_config.pool_state.price_state.oracle_price.to_string(),
+                })?)
             }
             _ => Err(anyhow::anyhow!("Unexpected stargate query request {path}",)),
         }
