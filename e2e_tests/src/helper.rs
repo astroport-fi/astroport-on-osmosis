@@ -164,7 +164,7 @@ impl<'a> TestAppWrapper<'a> {
             .unwrap();
         helper.coin_registry = coin_registry_address.clone();
 
-        helper.astro_denom = helper.register_and_mint("astro", 1_000_000_000000, 6, None);
+        helper.astro_denom = helper.register_and_mint("astro", 1_000_000_000_000, 6, None);
 
         println!("Storing satellite contract...");
         let satellite_code_id = helper.store_code(satellite_wasm).unwrap();

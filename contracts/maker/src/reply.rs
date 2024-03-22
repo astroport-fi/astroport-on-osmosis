@@ -14,7 +14,7 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
             let config = CONFIG.load(deps.storage)?;
             let astro_balance = deps
                 .querier
-                .query_balance(&env.contract.address, &config.astro_denom)?;
+                .query_balance(env.contract.address, &config.astro_denom)?;
 
             let mut response = Response::new().add_attributes([
                 attr("action", "post_collect_reply"),

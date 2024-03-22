@@ -140,10 +140,9 @@ pub fn collect(
 
     messages
         .last_mut()
-        .and_then(|submsg| {
+        .map(|submsg| {
             submsg.id = POST_COLLECT_REPLY_ID;
             submsg.reply_on = ReplyOn::Success;
-            Some(())
         })
         .ok_or(ContractError::NothingToCollect {})?;
 

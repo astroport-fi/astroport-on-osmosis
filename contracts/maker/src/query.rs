@@ -33,11 +33,11 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
 
 pub fn query_route(
     storage: &dyn Storage,
-    denom_in: &String,
-    denom_out: &String,
+    denom_in: &str,
+    denom_out: &str,
 ) -> Result<Vec<SwapRouteResponse>, ContractError> {
     let routes = RoutesBuilder::default()
-        .build_routes(storage, &denom_in, &denom_out)?
+        .build_routes(storage, denom_in, denom_out)?
         .routes
         .into_iter()
         .map(|route| SwapRouteResponse {
@@ -59,10 +59,7 @@ pub fn query_routes(
     ROUTES
         .range(
             storage,
-            start_after
-                .as_ref()
-                .map(|s| s.as_str())
-                .map(Bound::exclusive),
+            start_after.as_deref().map(Bound::exclusive),
             None,
             Order::Ascending,
         )
