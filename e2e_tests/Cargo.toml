@@ -8,8 +8,8 @@ anyhow = "1"
 cosmwasm-std = "1"
 serde = "1"
 osmosis-std = { workspace = true }
-osmosis-test-tube = "21.0.0"
-test-tube = "0.4.0"
+osmosis-test-tube = "22.1"
+test-tube = "0.5.0"
 astroport = { workspace = true }
 astroport-on-osmosis = { path = "../packages/astroport_on_osmosis", version = "1" }
 serde_json = "1"
