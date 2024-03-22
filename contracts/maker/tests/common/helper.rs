@@ -229,6 +229,7 @@ impl Helper {
                 pair_type: PairType::Custom("concentrated".to_string()),
                 is_disabled: false,
                 is_generator_disabled: false,
+                permissioned: false,
             }],
             token_code_id: 0,
             generator_address: None,

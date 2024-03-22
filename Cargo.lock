@@ -151,7 +151,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "astro-satellite-package",
- "astroport 3.9.0",
+ "astroport 3.11.1",
  "astroport-factory-osmosis",
  "astroport-native-coin-registry",
  "astroport-on-osmosis",
@@ -163,7 +163,7 @@ dependencies = [
  "cw-utils 1.0.3",
  "cw2 1.1.2",
  "derivative",
- "itertools 0.12.0",
+ "itertools 0.12.1",
  "osmosis-std",
  "thiserror",
 ]
@@ -197,6 +197,7 @@ name = "astroport-osmo-e2e-tests"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "astro-satellite-package",
  "astroport 3.11.1",
  "astroport-on-osmosis",
  "cosmwasm-std",

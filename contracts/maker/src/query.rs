@@ -13,7 +13,7 @@ use crate::state::{CONFIG, ROUTES};
 use crate::utils::{query_out_amount, RoutesBuilder};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     let result = match msg {
         QueryMsg::Config {} => to_json_binary(&CONFIG.load(deps.storage)?),
         QueryMsg::Route {
@@ -24,7 +24,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
             to_json_binary(&query_routes(deps.storage, start_after, limit)?)
         }
         QueryMsg::EstimateExactInSwap { coin_in } => {
-            to_json_binary(&estimate_exact_swap_in(deps, env, coin_in)?)
+            to_json_binary(&estimate_exact_swap_in(deps, coin_in)?)
         }
     }?;
 
@@ -77,21 +77,12 @@ pub fn query_routes(
         .collect()
 }
 
-pub fn estimate_exact_swap_in(
-    deps: Deps,
-    env: Env,
-    coin_in: Coin,
-) -> Result<Uint128, ContractError> {
+pub fn estimate_exact_swap_in(deps: Deps, coin_in: Coin) -> Result<Uint128, ContractError> {
     let config = CONFIG.load(deps.storage)?;
 
     let mut routes_builder = RoutesBuilder::default();
     let built_routes =
         routes_builder.build_routes(deps.storage, &coin_in.denom, &config.astro_denom)?;
 
-    query_out_amount(
-        deps.querier,
-        env.block.time.seconds(),
-        &coin_in,
-        &built_routes.routes,
-    )
+    query_out_amount(deps.querier, &coin_in, &built_routes.routes)
 }

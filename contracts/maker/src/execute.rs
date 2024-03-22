@@ -125,12 +125,8 @@ pub fn collect(
 
         attrs.push(attr("route_taken", built_routes.route_taken));
 
-        let out_amount = query_out_amount(
-            deps.querier,
-            env.block.time.seconds(),
-            &balance,
-            &built_routes.routes,
-        )?;
+        let out_amount = query_out_amount(deps.querier, &balance, &built_routes.routes)?;
+
         let min_out_amount = (Decimal::one() - config.max_spread) * out_amount;
 
         let swap_msg = MsgSwapExactAmountIn {

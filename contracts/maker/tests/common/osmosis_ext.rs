@@ -18,13 +18,11 @@ use osmosis_std::types::osmosis::cosmwasmpool::v1beta1::{
 };
 use osmosis_std::types::osmosis::poolmanager;
 use osmosis_std::types::osmosis::poolmanager::v1beta1::{
-    MsgSwapExactAmountIn, MsgSwapExactAmountOut, TotalPoolLiquidityRequest,
+    MsgSwapExactAmountIn, MsgSwapExactAmountOut, SpotPriceRequest, SpotPriceResponse,
+    TotalPoolLiquidityRequest,
 };
 use osmosis_std::types::osmosis::tokenfactory::v1beta1::{
     MsgBurn, MsgCreateDenom, MsgCreateDenomResponse, MsgMint,
-};
-use osmosis_std::types::osmosis::twap::v1beta1::{
-    ArithmeticTwapToNowRequest, ArithmeticTwapToNowResponse,
 };
 
 use astroport_on_osmosis::pair_pcl;
@@ -325,18 +323,21 @@ impl Stargate for OsmosisStargate {
                     &poolmanager::v1beta1::TotalPoolLiquidityResponse { liquidity },
                 )?)
             }
-            "/osmosis.twap.v1beta1.Query/ArithmeticTwapToNow" => {
-                let inner: ArithmeticTwapToNowRequest = data.try_into()?;
-
-                // We dont reimplement whole twap logic from osmosis and returning EMA oracle price from PCL
+            "/osmosis.poolmanager.v1beta1.Query/SpotPrice" => {
+                let inner: SpotPriceRequest = data.try_into()?;
 
                 let contract_address = self.cw_pools.borrow()[&inner.pool_id].clone();
                 let querier = QuerierWrapper::<Empty>::new(querier);
-                let pcl_config = astroport_pcl_osmo::state::CONFIG
-                    .query(&querier, Addr::unchecked(contract_address))?;
+                let spot_price: SpotPriceResponse = querier.query_wasm_smart(
+                    &contract_address,
+                    &QueryMsg::SpotPrice {
+                        quote_asset_denom: inner.quote_asset_denom.to_string(),
+                        base_asset_denom: inner.quote_asset_denom.to_string(),
+                    },
+                )?;
 
-                Ok(to_json_binary(&ArithmeticTwapToNowResponse {
-                    arithmetic_twap: pcl_config.pool_state.price_state.oracle_price.to_string(),
+                Ok(to_json_binary(&SpotPriceResponse {
+                    spot_price: spot_price.spot_price,
                 })?)
             }
             _ => Err(anyhow::anyhow!("Unexpected stargate query request {path}",)),

@@ -9,8 +9,6 @@ pub const MAX_ALLOWED_SPREAD: Decimal = Decimal::percent(50);
 pub const COOLDOWN_LIMITS: RangeInclusive<u64> = 30..=600;
 /// Maximum allowed route hops
 pub const MAX_SWAPS_DEPTH: u8 = 5;
-/// 10 min in seconds
-pub const TWAP_WINDOW_SIZE_SECONDS: u64 = 600;
 
 /// Default pagination limit
 pub const DEFAULT_PAGINATION_LIMIT: u32 = 50;

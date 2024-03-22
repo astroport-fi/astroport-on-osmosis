@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use cosmwasm_std::{ensure, Coin, Decimal, Fraction, QuerierWrapper, StdResult, Storage, Uint128};
+use cosmwasm_std::{
+    ensure, Coin, Decimal, Fraction, QuerierWrapper, StdError, StdResult, Storage, Uint128,
+};
 use itertools::Itertools;
-use osmosis_std::shim::Timestamp;
-use osmosis_std::types::osmosis::poolmanager::v1beta1::SwapAmountInRoute;
-use osmosis_std::types::osmosis::twap::v1beta1::TwapQuerier;
+use osmosis_std::types::osmosis::poolmanager::v1beta1::{PoolmanagerQuerier, SwapAmountInRoute};
 
-use astroport_on_osmosis::maker::{COOLDOWN_LIMITS, MAX_SWAPS_DEPTH, TWAP_WINDOW_SIZE_SECONDS};
+use astroport_on_osmosis::maker::{COOLDOWN_LIMITS, MAX_SWAPS_DEPTH};
 
 use crate::error::ContractError;
 use crate::state::{RouteStep, ROUTES};
@@ -37,22 +37,13 @@ pub fn validate_cooldown(maybe_cooldown: Option<u64>) -> Result<(), ContractErro
 /// 4) usdc_out_amount = (atom amount) * (price for atom/usdc)
 pub fn query_out_amount(
     querier: QuerierWrapper,
-    block_ts: u64,
     coin_in: &Coin,
     steps: &[SwapAmountInRoute],
 ) -> Result<Uint128, ContractError> {
-    let start_time = block_ts - TWAP_WINDOW_SIZE_SECONDS;
-
     let mut price = Decimal::one();
     let mut denom_in = coin_in.denom.clone();
     for step in steps {
-        let step_price = query_arithmetic_twap_price(
-            querier,
-            step.pool_id,
-            &denom_in,
-            &step.token_out_denom,
-            start_time,
-        )?;
+        let step_price = query_spot_price(querier, step.pool_id, &denom_in, &step.token_out_denom)?;
         price = price.checked_mul(step_price)?;
         denom_in = step.token_out_denom.clone();
     }
@@ -63,28 +54,26 @@ pub fn query_out_amount(
     Ok(out_amount)
 }
 
-/// Query arithmetic twap price of a coin, denominated in OSMO.
-/// `start_time` must be within 48 hours of current block time.
-///
-/// Copied from Mars: https://github.com/mars-protocol/contracts/blob/28edbfb37768cc6c73b854ce5d95b2655951af58/packages/chains/osmosis/src/helpers.rs#L128
-pub fn query_arithmetic_twap_price(
+/// Query spot price of a coin, denominated in quote_denom.
+pub fn query_spot_price(
     querier: QuerierWrapper,
     pool_id: u64,
     base_denom: &str,
     quote_denom: &str,
-    start_time: u64,
 ) -> StdResult<Decimal> {
-    let twap_res = TwapQuerier::new(&querier).arithmetic_twap_to_now(
+    let spot_price_res = PoolmanagerQuerier::new(&querier).spot_price(
         pool_id,
         base_denom.to_string(),
         quote_denom.to_string(),
-        Some(Timestamp {
-            seconds: start_time as i64,
-            nanos: 0,
-        }),
     )?;
-    let price = Decimal::from_str(&twap_res.arithmetic_twap)?;
-    Ok(price)
+    let price = Decimal::from_str(&spot_price_res.spot_price)?;
+    if price.is_zero() {
+        Err(StdError::generic_err(format!(
+            "Zero spot price. pool_id {pool_id} base_denom {base_denom} quote_denom {quote_denom}",
+        )))
+    } else {
+        Ok(price)
+    }
 }
 
 #[derive(Default)]
