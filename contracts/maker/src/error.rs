@@ -1,4 +1,5 @@
 use cosmwasm_std::{CheckedMultiplyRatioError, OverflowError, StdError};
+use cw2::VersionError;
 use cw_utils::PaymentError;
 use thiserror::Error;
 
@@ -17,6 +18,9 @@ pub enum ContractError {
 
     #[error("{0}")]
     CheckedMultiplyRatioError(#[from] CheckedMultiplyRatioError),
+
+    #[error("{0}")]
+    VersionError(#[from] VersionError),
 
     #[error("Unauthorized")]
     Unauthorized {},

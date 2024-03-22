@@ -11,9 +11,9 @@ use crate::state::{CONFIG, LAST_COLLECT_TS};
 use crate::utils::validate_cooldown;
 
 /// Contract name for cw2 info
-const CONTRACT_NAME: &str = env!("CARGO_PKG_NAME");
+pub const CONTRACT_NAME: &str = env!("CARGO_PKG_NAME");
 /// Contract version for cw2 info
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
