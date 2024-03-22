@@ -1,6 +1,6 @@
 use astroport::asset::{native_asset_info, Asset, AssetInfo, AssetInfoExt};
 use astroport::cosmwasm_ext::{DecimalToInteger, IntegerToDecimal};
-use astroport::observation::query_observation;
+use astroport::observation::{query_observation, try_dec256_into_dec};
 use astroport::pair::{
     ConfigResponse, PoolResponse, ReverseSimulationResponse, SimulationResponse,
 };
@@ -14,8 +14,8 @@ use astroport_pcl_common::{calc_d, get_xcp};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, Binary, Decimal, Decimal256, Deps, Env, Fraction, StdError, StdResult, Uint128,
-    Uint64,
+    ensure, to_json_binary, Binary, Decimal, Decimal256, Deps, Env, Fraction, StdError, StdResult,
+    Uint128, Uint64,
 };
 use itertools::Itertools;
 
@@ -131,22 +131,32 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
                     AssetInfo::Token { .. } => unreachable!("Token assets are not supported"),
                 })
                 .collect_vec();
-            let price = query_observation(deps, env, OBSERVATIONS, 0)?.price;
 
-            let spot_price = if pool_denoms[0] == quote_asset_denom
-                && pool_denoms[1] == base_asset_denom
-            {
-                price
-                    .inv()
-                    .ok_or_else(|| StdError::generic_err("Price is zero"))
-            } else if pool_denoms[0] == base_asset_denom && pool_denoms[1] == quote_asset_denom {
-                Ok(price)
-            } else {
-                Err(StdError::generic_err(format!(
+            ensure!(
+                pool_denoms.contains(&quote_asset_denom) && pool_denoms.contains(&base_asset_denom),
+                StdError::generic_err(format!(
                     "Invalid pool denoms {quote_asset_denom} {base_asset_denom}. Must be {} {}",
                     pool_denoms[0], pool_denoms[1]
-                )))
-            }?;
+                ))
+            );
+
+            let spot_price = query_observation(deps, env, OBSERVATIONS, 0)
+                .map(|observation| {
+                    if pool_denoms[0] == quote_asset_denom && pool_denoms[1] == base_asset_denom {
+                        observation.price
+                    } else {
+                        observation.price.inv().unwrap_or_default()
+                    }
+                })
+                .or_else(|_| -> StdResult<_> {
+                    let price_scale =
+                        try_dec256_into_dec(config.pool_state.price_state.price_scale)?;
+                    if pool_denoms[0] == quote_asset_denom && pool_denoms[1] == base_asset_denom {
+                        Ok(price_scale)
+                    } else {
+                        Ok(price_scale.inv().unwrap_or_default())
+                    }
+                })?;
 
             to_json_binary(&SpotPriceResponse { spot_price })
         }

@@ -152,6 +152,7 @@ impl<'a> TestAppWrapper<'a> {
                 maker_fee_bps: 0,
                 is_disabled: false,
                 is_generator_disabled: false,
+                permissioned: false,
             }],
             fee_address: Some(FAKE_MAKER.to_string()),
             generator_address: None,

@@ -1,7 +1,10 @@
 [package]
 name = "astroport-on-osmosis"
-version = "1.0.0"
+version = "1.0.1"
+authors = ["Astroport"]
 edition = "2021"
+description = "External API of Astroport contracts on Osmosis"
+license = "Apache-2.0"
 
 [dependencies]
 cosmwasm-schema = "1"

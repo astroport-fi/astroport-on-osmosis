@@ -42,6 +42,7 @@ fn proper_initialization() {
         maker_fee_bps: 10,
         is_disabled: false,
         is_generator_disabled: false,
+        permissioned: false,
     }];
 
     let msg = InstantiateMsg {
