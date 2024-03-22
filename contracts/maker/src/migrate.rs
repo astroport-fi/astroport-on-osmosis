@@ -38,7 +38,7 @@ pub fn migrate(deps: DepsMut, env: Env, msg: InstantiateMsg) -> Result<Response,
         sender: Addr::unchecked(cw_admin),
         funds: vec![],
     };
-    // Instantiate Assembly state.
+    // Instantiate state.
     // Config and cw2 info will be overwritten.
     let contract_version = cw2::get_contract_version(deps.storage)?;
 
