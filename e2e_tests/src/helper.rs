@@ -52,11 +52,26 @@ where
     T::from_str(&val.to_string()).unwrap()
 }
 
-const FAKE_MAKER: &str = "osmo1ek9r5ulgr0cmwdwchhd87d2x4lajaucwv8p5xn";
+pub fn default_pcl_params(price_scale: Decimal) -> ConcentratedPoolParams {
+    ConcentratedPoolParams {
+        amp: f64_to_dec(10f64),
+        gamma: f64_to_dec(0.000145),
+        mid_fee: f64_to_dec(0.0026),
+        out_fee: f64_to_dec(0.0045),
+        fee_gamma: f64_to_dec(0.00023),
+        repeg_profit_threshold: f64_to_dec(0.000002),
+        min_price_scale_delta: f64_to_dec(0.000146),
+        price_scale,
+        ma_half_time: 600,
+        track_asset_balances: None,
+        fee_share: None,
+    }
+}
 
 const BUILD_CONTRACTS: &[&str] = &[
     // "astroport-pcl-osmo", // we build this contract separately to hardcode factory address
     "astroport-factory-osmosis",
+    "astroport-maker-osmosis",
 ];
 
 fn compile_wasm(project_dir: &str, contract: &str) {
@@ -92,6 +107,9 @@ pub struct TestAppWrapper<'a> {
     pub code_ids: HashMap<&'a str, u64>,
     pub coin_registry: String,
     pub factory: String,
+    pub astro_denom: String,
+    pub maker: String,
+    pub satellite: String,
 }
 
 impl<'a> TestAppWrapper<'a> {
@@ -106,6 +124,8 @@ impl<'a> TestAppWrapper<'a> {
         let target_dir = Path::new(&project_dir).join("target/wasm32-unknown-unknown/release");
         let native_registry_wasm =
             Path::new(&project_dir).join("e2e_tests/contracts/astroport_native_coin_registry.wasm");
+        let satellite_wasm =
+            Path::new(&project_dir).join("e2e_tests/contracts/astro_satellite.wasm");
         let factory_wasm = target_dir.join("astroport_factory_osmosis.wasm");
 
         let mut helper = Self {
@@ -118,6 +138,9 @@ impl<'a> TestAppWrapper<'a> {
             code_ids: HashMap::new(),
             coin_registry: "".to_string(),
             factory: "".to_string(),
+            astro_denom: "".to_string(),
+            maker: "".to_string(),
+            satellite: "".to_string(),
         };
 
         println!("Storing coin registry contract...");
@@ -141,8 +164,43 @@ impl<'a> TestAppWrapper<'a> {
             .unwrap();
         helper.coin_registry = coin_registry_address.clone();
 
-        // setting 3 a little hacky but I don't know other way
-        helper.code_ids.insert("pair-concentrated", 3);
+        helper.astro_denom = helper.register_and_mint("astro", 1_000_000_000_000, 6, None);
+
+        println!("Storing satellite contract...");
+        let satellite_code_id = helper.store_code(satellite_wasm).unwrap();
+        helper.code_ids.insert("satellite", satellite_code_id);
+        let satellite_init_msg = astro_satellite_package::InstantiateMsg {
+            owner: helper.signer.address(),
+            astro_denom: helper.astro_denom.clone(),
+            transfer_channel: "channel-1".to_string(),
+            main_controller: "TBD".to_string(),
+            main_maker: "TBD".to_string(),
+            timeout: 360,
+            max_signal_outage: 1209600,
+            emergency_owner: helper.signer.address(),
+        };
+        helper.satellite = helper
+            .init_contract("satellite", &satellite_init_msg, &[])
+            .unwrap();
+
+        println!("Storing maker contract...");
+        let maker_code_id = helper
+            .store_code(target_dir.join("astroport_maker_osmosis.wasm"))
+            .unwrap();
+        helper.code_ids.insert("maker", maker_code_id);
+
+        let maker_init_msg = astroport_on_osmosis::maker::InstantiateMsg {
+            owner: helper.signer.address(),
+            astro_denom: helper.astro_denom.to_owned(),
+            satellite: helper.satellite.to_owned(),
+            max_spread: Decimal::percent(10),
+            collect_cooldown: Some(60),
+        };
+
+        helper.maker = helper.init_contract("maker", &maker_init_msg, &[]).unwrap();
+
+        // setting 5 a little hacky but I don't know other way
+        helper.code_ids.insert("pair-concentrated", 5);
 
         let factory_init_msg = factory::InstantiateMsg {
             pair_configs: vec![PairConfig {
@@ -154,7 +212,7 @@ impl<'a> TestAppWrapper<'a> {
                 is_generator_disabled: false,
                 permissioned: false,
             }],
-            fee_address: Some(FAKE_MAKER.to_string()),
+            fee_address: Some(helper.maker.clone()),
             generator_address: None,
             owner: helper.signer.address(),
             coin_registry_address,
@@ -181,7 +239,7 @@ impl<'a> TestAppWrapper<'a> {
             UploadCosmWasmPoolCodeAndWhiteListProposal {
                 title: String::from("store test cosmwasm pool code"),
                 description: String::from("test"),
-                wasm_byte_code: std::fs::read(cl_pool_wasm).unwrap(),
+                wasm_byte_code: fs::read(cl_pool_wasm).unwrap(),
             },
             helper.signer.address(),
             &helper.signer,

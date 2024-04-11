@@ -1,0 +1,34 @@
+[package]
+name = "astroport-maker-osmosis"
+version = "1.0.0"
+authors = ["Astroport"]
+edition = "2021"
+description = "Astroport maker contract for Osmosis"
+license = "GPL-3.0-only"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+library = []
+
+[dependencies]
+cosmwasm-std = { version = "1", features = ["cosmwasm_1_1"] }
+cosmwasm-schema = "1"
+cw-storage-plus = "0.15"
+osmosis-std.workspace = true
+cw-utils = "1"
+cw2 = "1"
+astroport.workspace = true
+astroport-on-osmosis = { path = "../../packages/astroport_on_osmosis", version = "1" }
+astro-satellite-package = "1"
+thiserror = "1.0"
+itertools.workspace = true
+
+[dev-dependencies]
+cw-multi-test = { version = "0.20.0", features = ["cosmwasm_1_1"] }
+anyhow = "1"
+derivative = "2"
+astroport-native-coin-registry = { workspace = true }
+astroport-factory = { package = "astroport-factory-osmosis", path = "../factory" }
+astroport-pcl-osmo = { path = "../pair_concentrated" }
