@@ -13,7 +13,7 @@ use astroport::pair_concentrated::{
 };
 use astroport_pcl_common::consts::{AMP_MAX, AMP_MIN, MA_HALF_TIME_LIMITS};
 use astroport_pcl_common::error::PclError;
-use cosmwasm_std::{Addr, Decimal, Fraction, StdError, Uint128};
+use cosmwasm_std::{Addr, Decimal, StdError, Uint128};
 use cw_multi_test::{next_block, Executor};
 use itertools::Itertools;
 
@@ -1517,8 +1517,7 @@ fn test_osmosis_specific_queries() {
             },
         )
         .unwrap();
-    let astro_resp = helper.observe_price(0).unwrap();
-    assert_eq!(osm_resp.spot_price, astro_resp);
+    assert_eq!(osm_resp.spot_price.to_string(), "1.00118745790560783");
 
     // query inverted price
     let osm_resp = helper
@@ -1532,7 +1531,7 @@ fn test_osmosis_specific_queries() {
             },
         )
         .unwrap();
-    assert_eq!(osm_resp.spot_price, astro_resp.inv().unwrap());
+    assert_eq!(osm_resp.spot_price.to_string(), "0.998824162472793607");
 
     let err = helper
         .app

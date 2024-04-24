@@ -1,4 +1,4 @@
-use astroport::asset::{native_asset_info, Asset, AssetInfo, AssetInfoExt};
+use astroport::asset::{native_asset_info, Asset, AssetInfo, AssetInfoExt, Decimal256Ext};
 use astroport::cosmwasm_ext::{DecimalToInteger, IntegerToDecimal};
 use astroport::observation::{query_observation, try_dec256_into_dec};
 use astroport::pair::{
@@ -6,6 +6,7 @@ use astroport::pair::{
 };
 use astroport::pair_concentrated::ConcentratedPoolConfig;
 use astroport::querier::{query_factory_config, query_fee_info};
+use astroport_pcl_common::consts::{OFFER_PERCENT, TWO};
 use astroport_pcl_common::state::Precisions;
 use astroport_pcl_common::utils::{
     before_swap_check, compute_offer_amount, compute_swap, get_share_in_assets,
@@ -14,8 +15,8 @@ use astroport_pcl_common::{calc_d, get_xcp};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure, to_json_binary, Binary, Decimal, Decimal256, Deps, Env, Fraction, StdError, StdResult,
-    Uint128, Uint64,
+    ensure, to_json_binary, Binary, Decimal, Decimal256, Deps, Env, StdError, StdResult, Uint128,
+    Uint64,
 };
 use itertools::Itertools;
 
@@ -122,15 +123,27 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
             base_asset_denom,
         } => {
             let config = CONFIG.load(deps.storage)?;
-            let pool_denoms = config
+            let pools = config
                 .pair_info
-                .asset_infos
-                .into_iter()
-                .map(|asset_info| match asset_info {
+                .query_pools(&deps.querier, &env.contract.address)?;
+            let pool_denoms = pools
+                .iter()
+                .map(|asset| match &asset.info {
                     AssetInfo::NativeToken { denom } => denom,
                     AssetInfo::Token { .. } => unreachable!("Token assets are not supported"),
                 })
+                .cloned()
                 .collect_vec();
+            let precisions = Precisions::new(deps.storage)?;
+            let reserves = pools
+                .iter()
+                .map(|asset| {
+                    let precision = precisions
+                        .get_precision(&asset.info)
+                        .map_err(|err| StdError::generic_err(err.to_string()))?;
+                    Decimal256::with_precision(asset.amount, precision)
+                })
+                .collect::<StdResult<Vec<_>>>()?;
 
             ensure!(
                 pool_denoms.contains(&quote_asset_denom) && pool_denoms.contains(&base_asset_denom),
@@ -140,25 +153,50 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 ))
             );
 
-            let spot_price = query_observation(deps, env, OBSERVATIONS, 0)
-                .map(|observation| {
-                    if pool_denoms[0] == quote_asset_denom && pool_denoms[1] == base_asset_denom {
-                        observation.price
-                    } else {
-                        observation.price.inv().unwrap_or_default()
-                    }
-                })
-                .or_else(|_| -> StdResult<_> {
-                    let price_scale =
-                        try_dec256_into_dec(config.pool_state.price_state.price_scale)?;
-                    if pool_denoms[0] == quote_asset_denom && pool_denoms[1] == base_asset_denom {
-                        Ok(price_scale)
-                    } else {
-                        Ok(price_scale.inv().unwrap_or_default())
-                    }
-                })?;
+            let maker_fee_share = query_fee_info(
+                &deps.querier,
+                &config.factory_addr,
+                config.pair_info.pair_type.clone(),
+            )
+            .map(|fee_info| {
+                if fee_info.fee_address.is_some() {
+                    fee_info.maker_fee_rate
+                } else {
+                    Decimal::zero()
+                }
+            })?;
 
-            to_json_binary(&SpotPriceResponse { spot_price })
+            let get_spot_price = |offer_ind: usize| -> StdResult<Decimal256> {
+                let mut offer_amount = reserves[offer_ind] * OFFER_PERCENT;
+                if offer_amount.is_zero() {
+                    offer_amount = Decimal256::raw(1u128);
+                }
+
+                let swap_result = compute_swap(
+                    &reserves,
+                    offer_amount,
+                    1 ^ offer_ind,
+                    &config,
+                    &env,
+                    maker_fee_share.into(),
+                    Decimal256::zero(),
+                )?;
+
+                let price = if pool_denoms[offer_ind] == quote_asset_denom {
+                    offer_amount / swap_result.dy
+                } else {
+                    swap_result.dy / offer_amount
+                };
+
+                Ok(price)
+            };
+
+            // Calculate average from buy and sell prices
+            let spot_price = (get_spot_price(0)? + get_spot_price(1)?) / TWO;
+
+            to_json_binary(&SpotPriceResponse {
+                spot_price: try_dec256_into_dec(spot_price)?,
+            })
         }
         // Osmosis confirmed we can safely set 0% here.
         // Osmosis team: it was needed due to Osmosis legacy multi hop osmo swap fee reduction where
