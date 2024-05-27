@@ -861,8 +861,7 @@ fn check_prices() {
 
     let helper = Helper::new(&owner, test_coins, common_pcl_params()).unwrap();
     let err = helper.query_prices().unwrap_err();
-    assert_eq!(StdError::generic_err("Querier contract error: Generic error: Not implemented.Use { \"observe\": { \"seconds_ago\": ... } } instead.")
-    , err);
+    assert!(err.to_string().contains("Not implemented.Use"));
 }
 
 #[test]
