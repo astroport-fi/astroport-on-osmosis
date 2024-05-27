@@ -861,7 +861,7 @@ fn check_prices() {
 
     let helper = Helper::new(&owner, test_coins, common_pcl_params()).unwrap();
     let err = helper.query_prices().unwrap_err();
-    assert_eq!(StdError::generic_err("Querier contract error: Generic error: Not implemented.Use { \"observe\" : { \"seconds_ago\" : ... } } instead.")
+    assert_eq!(StdError::generic_err("Querier contract error: Generic error: Not implemented.Use { \"observe\": { \"seconds_ago\": ... } } instead.")
     , err);
 }
 
@@ -1552,6 +1552,57 @@ fn test_osmosis_specific_queries() {
             base = helper.assets[&test_coins[0]].to_string()
         ))
     );
+}
+
+#[test]
+fn test_spot_price_diff_decimals() {
+    let owner = Addr::unchecked("owner");
+
+    let test_coins = vec![TestCoin::native("uusd"), TestCoin::native("eth")];
+
+    let mut helper = Helper::new(
+        &owner,
+        test_coins.clone(),
+        ConcentratedPoolParams {
+            price_scale: Decimal::from_ratio(3000u16, 1u8),
+            ..common_pcl_params()
+        },
+    )
+    .unwrap();
+
+    let provide_assets = [
+        helper.assets[&test_coins[0]].with_balance(3_000_000 * 1e6 as u128),
+        helper.assets[&test_coins[1]].with_balance(1_000 * 1e18 as u128),
+    ];
+    helper.give_me_money(&provide_assets, &owner);
+    helper.provide_liquidity(&owner, &provide_assets).unwrap();
+
+    let resp = helper
+        .app
+        .wrap()
+        .query_wasm_smart::<SpotPriceResponse>(
+            &helper.pair_addr,
+            &QueryMsg::SpotPrice {
+                quote_asset_denom: helper.assets[&test_coins[0]].to_string(),
+                base_asset_denom: helper.assets[&test_coins[1]].to_string(),
+            },
+        )
+        .unwrap();
+    assert_eq!(resp.spot_price.to_string(), "0.000000003000010176");
+
+    // query inverted price
+    let price = helper
+        .app
+        .wrap()
+        .query_wasm_smart::<SpotPriceResponse>(
+            &helper.pair_addr,
+            &QueryMsg::SpotPrice {
+                quote_asset_denom: helper.assets[&test_coins[1]].to_string(),
+                base_asset_denom: helper.assets[&test_coins[0]].to_string(),
+            },
+        )
+        .unwrap();
+    assert_eq!(price.spot_price.to_string(), "333334464.080626");
 }
 
 #[test]
