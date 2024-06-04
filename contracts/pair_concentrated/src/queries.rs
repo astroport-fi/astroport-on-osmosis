@@ -192,7 +192,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
             };
 
             // Calculate average from buy and sell prices
-            let mut spot_price = (get_spot_price(0)? + get_spot_price(1)?) / TWO;
+            let spot_price = (get_spot_price(0)? + get_spot_price(1)?) / TWO;
 
             // Denormalize the price
             let quote_precision = precisions
@@ -201,13 +201,21 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
             let base_precision = precisions
                 .get_precision(&AssetInfo::native(&base_asset_denom))
                 .map_err(|err| StdError::generic_err(err.to_string()))?;
-            spot_price *= Decimal256::from_ratio(
-                10u128.pow(quote_precision.into()),
-                10u128.pow(base_precision.into()),
+            let denorm_price = spot_price
+                * Decimal256::from_ratio(
+                    10u128.pow(quote_precision.into()),
+                    10u128.pow(base_precision.into()),
+                );
+
+            ensure!(
+                spot_price.is_zero() || !denorm_price.is_zero(),
+                StdError::generic_err(format!(
+                    "Normalized price {spot_price} became zero after denormalization"
+                ))
             );
 
             to_json_binary(&SpotPriceResponse {
-                spot_price: spot_price
+                spot_price: denorm_price
                     .try_into()
                     .map_err(|err: DecimalRangeExceeded| StdError::generic_err(err.to_string()))?,
             })

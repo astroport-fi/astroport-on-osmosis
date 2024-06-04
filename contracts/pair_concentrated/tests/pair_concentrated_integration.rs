@@ -1605,6 +1605,46 @@ fn test_spot_price_diff_decimals() {
 }
 
 #[test]
+fn test_truncated_spot_price() {
+    let owner = Addr::unchecked("owner");
+
+    let test_coins = vec![TestCoin::native("uusd"), TestCoin::native("eth")];
+
+    let mut helper = Helper::new(
+        &owner,
+        test_coins.clone(),
+        ConcentratedPoolParams {
+            price_scale: Decimal::from_ratio(1u128, 10000u128),
+            ..common_pcl_params()
+        },
+    )
+    .unwrap();
+
+    let provide_assets = [
+        helper.assets[&test_coins[0]].with_balance(1e2 as u128),
+        helper.assets[&test_coins[1]].with_balance(1_000 * 1e18 as u128),
+    ];
+    helper.give_me_money(&provide_assets, &owner);
+    helper.provide_liquidity(&owner, &provide_assets).unwrap();
+
+    let err = helper
+        .app
+        .wrap()
+        .query_wasm_smart::<SpotPriceResponse>(
+            &helper.pair_addr,
+            &QueryMsg::SpotPrice {
+                quote_asset_denom: helper.assets[&test_coins[0]].to_string(),
+                base_asset_denom: helper.assets[&test_coins[1]].to_string(),
+            },
+        )
+        .unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "Generic error: Querier contract error: Generic error: Normalized price 0.000000100003868184 became zero after denormalization"
+    );
+}
+
+#[test]
 fn check_reverse_swaps() {
     let owner = Addr::unchecked("owner");
 
