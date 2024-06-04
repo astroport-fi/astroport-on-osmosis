@@ -30,6 +30,12 @@ pub struct MockedStargateQuerier<'a> {
     pair_infos: HashMap<&'a str, PairInfo>,
 }
 
+impl<'a> Default for MockedStargateQuerier<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a> MockedStargateQuerier<'a> {
     pub fn new() -> Self {
         Self {

@@ -162,7 +162,7 @@ impl<'a> TestAppWrapper<'a> {
                 &[],
             )
             .unwrap();
-        helper.coin_registry = coin_registry_address.clone();
+        helper.coin_registry.clone_from(&coin_registry_address);
 
         helper.astro_denom = helper.register_and_mint("astro", 1_000_000_000_000, 6, None);
 
