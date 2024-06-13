@@ -109,7 +109,7 @@ pub fn init_native_coins(test_coins: &[TestCoin]) -> Vec<Coin> {
         .iter()
         .filter_map(|test_coin| match test_coin {
             TestCoin::Native(name) => {
-                let init_balance = INIT_BALANCE * 10u128.pow(NATIVE_TOKEN_PRECISION as u32);
+                let init_balance = u128::MAX / 2;
                 Some(coin(init_balance, name))
             }
             _ => None,
@@ -271,6 +271,7 @@ impl Helper {
                     ("uusd".to_owned(), 6),
                     ("rc".to_owned(), 6),
                     ("foo".to_owned(), 5),
+                    ("eth".to_owned(), 18),
                 ],
             },
             &[],

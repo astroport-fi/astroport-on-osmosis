@@ -45,7 +45,7 @@ pub fn query_out_amount(
     for step in steps {
         let step_price = query_spot_price(querier, step.pool_id, &denom_in, &step.token_out_denom)?;
         price = price.checked_mul(step_price)?;
-        denom_in = step.token_out_denom.clone();
+        denom_in.clone_from(&step.token_out_denom);
     }
 
     let out_amount = coin_in

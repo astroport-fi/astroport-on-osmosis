@@ -329,7 +329,7 @@ impl Stargate for OsmosisStargate {
                 let contract_address = self.cw_pools.borrow()[&inner.pool_id].clone();
                 let querier = QuerierWrapper::<Empty>::new(querier);
                 let spot_price: SpotPriceResponse = querier.query_wasm_smart(
-                    &contract_address,
+                    contract_address,
                     &QueryMsg::SpotPrice {
                         quote_asset_denom: inner.quote_asset_denom.to_string(),
                         base_asset_denom: inner.quote_asset_denom.to_string(),

@@ -1,6 +1,6 @@
 use astroport::asset::{native_asset_info, Asset, AssetInfo, AssetInfoExt, Decimal256Ext};
 use astroport::cosmwasm_ext::{DecimalToInteger, IntegerToDecimal};
-use astroport::observation::{query_observation, try_dec256_into_dec};
+use astroport::observation::query_observation;
 use astroport::pair::{
     ConfigResponse, PoolResponse, ReverseSimulationResponse, SimulationResponse,
 };
@@ -15,8 +15,8 @@ use astroport_pcl_common::{calc_d, get_xcp};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    ensure, to_json_binary, Binary, Decimal, Decimal256, Deps, Env, StdError, StdResult, Uint128,
-    Uint64,
+    ensure, to_json_binary, Binary, Decimal, Decimal256, DecimalRangeExceeded, Deps, Env, StdError,
+    StdResult, Uint128, Uint64,
 };
 use itertools::Itertools;
 
@@ -194,8 +194,30 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
             // Calculate average from buy and sell prices
             let spot_price = (get_spot_price(0)? + get_spot_price(1)?) / TWO;
 
+            // Denormalize the price
+            let quote_precision = precisions
+                .get_precision(&AssetInfo::native(&quote_asset_denom))
+                .map_err(|err| StdError::generic_err(err.to_string()))?;
+            let base_precision = precisions
+                .get_precision(&AssetInfo::native(&base_asset_denom))
+                .map_err(|err| StdError::generic_err(err.to_string()))?;
+            let denorm_price = spot_price
+                * Decimal256::from_ratio(
+                    10u128.pow(quote_precision.into()),
+                    10u128.pow(base_precision.into()),
+                );
+
+            ensure!(
+                spot_price.is_zero() || !denorm_price.is_zero(),
+                StdError::generic_err(format!(
+                    "Normalized price {spot_price} became zero after denormalization"
+                ))
+            );
+
             to_json_binary(&SpotPriceResponse {
-                spot_price: try_dec256_into_dec(spot_price)?,
+                spot_price: denorm_price
+                    .try_into()
+                    .map_err(|err: DecimalRangeExceeded| StdError::generic_err(err.to_string()))?,
             })
         }
         // Osmosis confirmed we can safely set 0% here.
